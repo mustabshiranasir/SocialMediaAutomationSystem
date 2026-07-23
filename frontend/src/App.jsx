@@ -1,0 +1,1550 @@
+import React, { useState, useEffect, useRef } from 'react';
+
+const API_BASE = 'http://localhost:8000';
+
+// ── Utility: parse platform previews & key points from description text ──────
+function parseDraftMeta(description) {
+  if (!description) return { body: '', keyPoints: [], cta: '', audience: '', platformPreviews: {}, improved: false };
+
+  const improved = description.startsWith('[AI IMPROVED');
+
+  // Key Talking Points
+  const keyPointsMatch = description.match(/\[Key Talking Points\]\n([\s\S]*?)(?=\n\[|$)/);
+  const keyPoints = keyPointsMatch
+    ? keyPointsMatch[1].split('\n').filter(l => l.startsWith('•')).map(l => l.replace('• ', '').trim())
+    : [];
+
+  // CTA
+  const ctaMatch = description.match(/\[Call to Action\]\n(.*?)(?=\n\[|$)/);
+  const cta = ctaMatch ? ctaMatch[1].trim() : '';
+
+  // Target Audience
+  const audMatch = description.match(/\[Target Audience\]\n(.*?)(?=\n\[|$)/);
+  const audience = audMatch ? audMatch[1].trim() : '';
+
+  // Platform Previews
+  const platformPreviews = {};
+  const previewMatch = description.match(/\[Platform Previews\]\n([\s\S]*?)$/);
+  if (previewMatch) {
+    const previewsText = previewMatch[1];
+    const platformBlocks = previewsText.split(/\[([A-Z]+)\]\n/);
+    for (let i = 1; i < platformBlocks.length; i += 2) {
+      const platform = platformBlocks[i].toLowerCase();
+      platformPreviews[platform] = platformBlocks[i + 1]?.trim() || '';
+    }
+  }
+
+  // Body = everything before first metadata section
+  const bodyMatch = description.match(/^([\s\S]*?)(?=\n\[Key Talking Points\]|\n\[Target Audience\]|\n\[Call to Action\]|\n\[Marketing Strategy\]|\n\[Platform Previews\])/);
+  const body = bodyMatch ? bodyMatch[1].trim() : description;
+
+  return { body, keyPoints, cta, audience, platformPreviews, improved };
+}
+
+export default function App() {
+  // Authentication State
+  const [token, setToken] = useState(localStorage.getItem('token') || '');
+  const [user, setUser] = useState(JSON.parse(localStorage.getItem('user') || 'null'));
+  const [isRegister, setIsRegister] = useState(false);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authName, setAuthName] = useState('');
+
+  // Dashboard & Content State
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [promptText, setPromptText] = useState('');
+  const [selectedPlatforms, setSelectedPlatforms] = useState(['linkedin', 'instagram']);
+  const [tone, setTone] = useState('Professional');
+  const [drafts, setDrafts] = useState([]);
+  const [accounts, setAccounts] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [analyticsOverview, setAnalyticsOverview] = useState({
+    total_likes: 0, total_shares: 0, total_reach: 0, total_comments: 0, average_ctr: 0.0
+  });
+  const [publishedPosts, setPublishedPosts] = useState([]);
+
+  // Per-draft UI state
+  const [improvementTexts, setImprovementTexts] = useState({});      // { draftId: string }
+  const [improvingDrafts, setImprovingDrafts] = useState({});          // { draftId: bool }
+  const [regeneratingImages, setRegeneratingImages] = useState({});    // { draftId: bool }
+  const [expandedDescriptions, setExpandedDescriptions] = useState({}); // { draftId: bool }
+  const [activePlatformTab, setActivePlatformTab] = useState({});     // { draftId: string }
+  const [imageTimestamps, setImageTimestamps] = useState({});          // { draftId: timestamp } for cache busting
+
+  // Preview Modal Overlay state
+  const [previewDraft, setPreviewDraft] = useState(null);
+  const [isEditingPreview, setIsEditingPreview] = useState(false);
+  const [modalPlatformTab, setModalPlatformTab] = useState('linkedin');
+  const [savingPreview, setSavingPreview] = useState(false);
+  const [editForm, setEditForm] = useState({ title: '', caption: '', hashtags: '', description: '' });
+
+  // Password Reset State
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('');
+
+  // Campaign Management State
+  const [campaigns, setCampaigns] = useState([]);
+  const [selectedCampaignId, setSelectedCampaignId] = useState('');
+  const [newCampaignName, setNewCampaignName] = useState('');
+  const [newCampaignPlatforms, setNewCampaignPlatforms] = useState(['linkedin', 'instagram']);
+  const [newCampaignStartDate, setNewCampaignStartDate] = useState('');
+  const [newCampaignEndDate, setNewCampaignEndDate] = useState('');
+
+  // Scheduling State
+  const [scheduledDateTime, setScheduledDateTime] = useState('');
+
+  // DevOps & System Diagnostic State (Skills 8 & 10)
+  const [systemHealth, setSystemHealth] = useState(null);
+  const [cloudStatus, setCloudStatus] = useState(null);
+
+  // Loading & UI feedback
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  useEffect(() => {
+    if (token) {
+      fetchDrafts();
+      fetchAccounts();
+      fetchNotifications();
+      fetchAnalytics();
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    const interval = setInterval(() => {
+      fetchNotifications();
+      if (activeTab === 'analytics') fetchAnalytics();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [token, activeTab]);
+
+  const getHeaders = () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` });
+
+  // ── Auth ─────────────────────────────────────────────────────────────────
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setLoading(true);
+    try {
+      if (isRegister) {
+        const res = await fetch(`${API_BASE}/api/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: authEmail, password: authPassword, name: authName, role: 'requester' })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Registration failed');
+        setToken(data.access_token); setUser(data.user);
+        localStorage.setItem('token', data.access_token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+      } else {
+        const params = new URLSearchParams();
+        params.append('username', authEmail);
+        params.append('password', authPassword);
+        const res = await fetch(`${API_BASE}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: params
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Login failed');
+        setToken(data.access_token); setUser(data.user);
+        localStorage.setItem('token', data.access_token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+      }
+    } catch (err) { setErrorMsg(err.message); }
+    finally { setLoading(false); }
+  };
+
+  const handleLogout = () => {
+    setToken(''); setUser(null);
+    localStorage.removeItem('token'); localStorage.removeItem('user');
+    setActiveTab('dashboard');
+  };
+
+  // ── Fetch helpers ────────────────────────────────────────────────────────
+  const fetchDrafts = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/drafts`, { headers: getHeaders() });
+      if (res.ok) setDrafts(await res.json());
+    } catch (e) { console.error('fetchDrafts:', e); }
+  };
+
+  const fetchAccounts = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/accounts`, { headers: getHeaders() });
+      if (res.ok) setAccounts(await res.json());
+    } catch (e) { console.error('fetchAccounts:', e); }
+  };
+
+  const fetchNotifications = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/notifications`, { headers: getHeaders() });
+      if (res.ok) setNotifications(await res.json());
+    } catch (e) { console.error('fetchNotifications:', e); }
+  };
+
+  const fetchAnalytics = async () => {
+    try {
+      const r1 = await fetch(`${API_BASE}/api/analytics`, { headers: getHeaders() });
+      if (r1.ok) setAnalyticsOverview(await r1.json());
+      const r2 = await fetch(`${API_BASE}/api/analytics/dashboard/posts`, { headers: getHeaders() });
+      if (r2.ok) setPublishedPosts(await r2.json());
+    } catch (e) { console.error('fetchAnalytics:', e); }
+  };
+
+  const fetchCampaigns = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/campaigns`, { headers: getHeaders() });
+      if (res.ok) setCampaigns(await res.json());
+    } catch (e) { console.error('fetchCampaigns:', e); }
+  };
+
+  const fetchSystemDiagnostics = async () => {
+    try {
+      const h = await fetch(`${API_BASE}/api/system/health`, { headers: getHeaders() });
+      if (h.ok) setSystemHealth(await h.json());
+      const c = await fetch(`${API_BASE}/api/system/cloud-status`, { headers: getHeaders() });
+      if (c.ok) setCloudStatus(await c.json());
+    } catch (e) { console.error('fetchSystemDiagnostics:', e); }
+  };
+
+  // ── Password Reset & Campaign Handlers ─────────────────────────────────────
+  const handlePasswordReset = async (e) => {
+    e.preventDefault();
+    if (!resetEmail || !resetNewPassword) return;
+    setLoading(true); setErrorMsg(''); setSuccessMsg('');
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetEmail, new_password: resetNewPassword })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Password reset failed');
+      setSuccessMsg(`🔒 Password reset successfully! You can now log in with your new password.`);
+      setShowResetModal(false);
+      setResetEmail(''); setResetNewPassword('');
+    } catch (err) { setErrorMsg(err.message); }
+    finally { setLoading(false); }
+  };
+
+  const handleCreateCampaign = async (e) => {
+    e.preventDefault();
+    if (!newCampaignName.trim()) return;
+    setLoading(true); setErrorMsg(''); setSuccessMsg('');
+    try {
+      const res = await fetch(`${API_BASE}/api/campaigns`, {
+        method: 'POST', headers: getHeaders(),
+        body: JSON.stringify({
+          name: newCampaignName,
+          target_platforms: newCampaignPlatforms,
+          start_date: newCampaignStartDate ? new Date(newCampaignStartDate).toISOString() : null,
+          end_date: newCampaignEndDate ? new Date(newCampaignEndDate).toISOString() : null
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const detailMsg = Array.isArray(data.detail)
+          ? data.detail.map(d => `${d.loc ? d.loc.slice(1).join('.') + ': ' : ''}${d.msg}`).join(', ')
+          : (typeof data.detail === 'string' ? data.detail : (data.message || 'Failed to create campaign'));
+        throw new Error(detailMsg);
+      }
+      setSuccessMsg(`🎯 Campaign '${data.name}' created successfully!`);
+      setNewCampaignName('');
+      fetchCampaigns();
+    } catch (err) { setErrorMsg(err.message); }
+    finally { setLoading(false); }
+  };
+
+  const handleScheduleDraft = async (draftId, targetIsoDate) => {
+    if (!targetIsoDate) return;
+    setLoading(true); setErrorMsg(''); setSuccessMsg('');
+    try {
+      const res = await fetch(`${API_BASE}/api/drafts/${draftId}/schedule`, {
+        method: 'POST', headers: getHeaders(),
+        body: JSON.stringify({ scheduled_at: targetIsoDate })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Scheduling failed');
+      setSuccessMsg(`📅 Post #${draftId} successfully scheduled for release!`);
+      if (previewDraft && previewDraft.id === draftId) setPreviewDraft(data);
+      fetchDrafts(); fetchNotifications();
+    } catch (err) { setErrorMsg(err.message); }
+    finally { setLoading(false); }
+  };
+
+  const handleRunScheduledQueue = async () => {
+    setLoading(true); setErrorMsg(''); setSuccessMsg('');
+    try {
+      const res = await fetch(`${API_BASE}/api/publish/scheduled/run`, {
+        method: 'POST', headers: getHeaders()
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Scheduled runner failed');
+      setSuccessMsg(`⏰ Scheduled Publish Runner executed. Released ${data.executed_count} due posts.`);
+      fetchDrafts(); fetchAnalytics(); fetchNotifications();
+    } catch (err) { setErrorMsg(err.message); }
+    finally { setLoading(false); }
+  };
+
+  // ── Prompt submit ────────────────────────────────────────────────────────
+  const handlePromptSubmit = async (e) => {
+    e.preventDefault();
+    if (!promptText.trim()) return;
+    setErrorMsg(''); setSuccessMsg(''); setLoading(true);
+    try {
+      const body = {
+        prompt_text: promptText,
+        target_platforms: selectedPlatforms,
+        tone,
+        ...(selectedCampaignId ? { campaign_id: parseInt(selectedCampaignId) } : {})
+      };
+      const res = await fetch(`${API_BASE}/api/prompt`, {
+        method: 'POST', headers: getHeaders(),
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to generate campaign draft');
+      setPromptText('');
+      setSuccessMsg('✨ AI campaign draft generated and sent to Review Queue!');
+
+      // Auto-schedule if a date was picked
+      if (scheduledDateTime && data.id) {
+        await handleScheduleDraft(data.id, new Date(scheduledDateTime).toISOString());
+        setScheduledDateTime('');
+      }
+
+      fetchDrafts(); fetchNotifications();
+    } catch (err) { setErrorMsg(err.message); }
+    finally { setLoading(false); }
+  };
+
+  // ── Approve / Reject ─────────────────────────────────────────────────────
+  const handleApprove = async (draftId) => {
+    setErrorMsg(''); setSuccessMsg(''); setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/drafts/${draftId}/approve`, {
+        method: 'POST', headers: getHeaders()
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to approve draft');
+      setSuccessMsg('🚀 Draft Approved and Published successfully!');
+      fetchDrafts(); fetchAnalytics(); fetchNotifications();
+    } catch (err) { setErrorMsg(err.message); }
+    finally { setLoading(false); }
+  };
+
+  // ── AI Improve (opinion-based instant regeneration) ─────────────────────
+  const handleImprove = async (draftId) => {
+    const opinion = improvementTexts[draftId]?.trim();
+    if (!opinion) return;
+
+    setImprovingDrafts(prev => ({ ...prev, [draftId]: true }));
+    setErrorMsg(''); setSuccessMsg('');
+    try {
+      const res = await fetch(`${API_BASE}/api/drafts/${draftId}/improve`, {
+        method: 'POST', headers: getHeaders(),
+        body: JSON.stringify({ opinion, regenerate_image: true })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Improvement failed');
+      setSuccessMsg('✨ Draft improved with your feedback! Image regenerated.');
+      setImprovementTexts(prev => ({ ...prev, [draftId]: '' }));
+      // Bust image cache
+      setImageTimestamps(prev => ({ ...prev, [draftId]: Date.now() }));
+      fetchDrafts(); fetchNotifications();
+    } catch (err) { setErrorMsg(err.message); }
+    finally { setImprovingDrafts(prev => ({ ...prev, [draftId]: false })); }
+  };
+
+  // ── Regenerate Image only ────────────────────────────────────────────────
+  const handleRegenerateImage = async (draftId) => {
+    setRegeneratingImages(prev => ({ ...prev, [draftId]: true }));
+    try {
+      const res = await fetch(`${API_BASE}/api/drafts/${draftId}/regenerate-image`, {
+        method: 'POST', headers: getHeaders()
+      });
+      if (!res.ok) throw new Error('Image regeneration failed');
+      setImageTimestamps(prev => ({ ...prev, [draftId]: Date.now() }));
+      fetchDrafts();
+    } catch (err) { setErrorMsg(err.message); }
+    finally { setRegeneratingImages(prev => ({ ...prev, [draftId]: false })); }
+  };
+
+  // ── Modal & Editing Handlers ──────────────────────────────────────────────
+  const openPreviewModal = (draft) => {
+    setPreviewDraft(draft);
+    setIsEditingPreview(false);
+    setEditForm({
+      title: draft.title || '',
+      caption: draft.caption || '',
+      hashtags: draft.hashtags || '',
+      description: draft.description || ''
+    });
+    const meta = parseDraftMeta(draft.description);
+    const platforms = Object.keys(meta.platformPreviews);
+    setModalPlatformTab(platforms[0] || 'linkedin');
+  };
+
+  const closePreviewModal = () => {
+    setPreviewDraft(null);
+    setIsEditingPreview(false);
+  };
+
+  const handleSavePreviewContent = async () => {
+    if (!previewDraft) return;
+    setSavingPreview(true);
+    setErrorMsg('');
+    setSuccessMsg('');
+    try {
+      const res = await fetch(`${API_BASE}/api/drafts/${previewDraft.id}/content`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          title: editForm.title,
+          caption: editForm.caption,
+          hashtags: editForm.hashtags,
+          description: editForm.description
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to update post content');
+      setSuccessMsg('💾 Post content updated and saved successfully!');
+      setPreviewDraft(data);
+      setIsEditingPreview(false);
+      fetchDrafts();
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
+      setSavingPreview(false);
+    }
+  };
+
+  const handlePublishDraft = async (draftId) => {
+    setErrorMsg(''); setSuccessMsg(''); setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/publish/${draftId}`, {
+        method: 'POST', headers: getHeaders()
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to publish draft');
+      setSuccessMsg('🚀 Post Published successfully to all social channels!');
+      if (previewDraft && previewDraft.id === draftId) {
+        setPreviewDraft(data);
+      }
+      fetchDrafts(); fetchAnalytics(); fetchNotifications();
+    } catch (err) { setErrorMsg(err.message); }
+    finally { setLoading(false); }
+  };
+
+  // ── Channel ops ──────────────────────────────────────────────────────────
+  const handleConnectChannel = async (platform) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/accounts/link?platform=${platform}&auth_code=code_${platform}`, {
+        method: 'POST', headers: getHeaders()
+      });
+      if (!res.ok) throw new Error('Failed to connect social account');
+      fetchAccounts(); setSuccessMsg(`✅ Connected ${platform} account.`);
+    } catch (err) { setErrorMsg(err.message); }
+    finally { setLoading(false); }
+  };
+
+  const handleDisconnectChannel = async (accountId) => {
+    if (!confirm('Disconnect this channel?')) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/accounts/${accountId}`, { method: 'DELETE', headers: getHeaders() });
+      if (!res.ok) throw new Error('Failed to disconnect account');
+      fetchAccounts(); setSuccessMsg('Social channel disconnected.');
+    } catch (err) { setErrorMsg(err.message); }
+    finally { setLoading(false); }
+  };
+
+  const quickFill = (role) => {
+    if (role === 'admin') { setAuthEmail('admin@social.com'); setAuthPassword('admin123'); setAuthName('Admin User'); }
+    else { setAuthEmail('maria@social.com'); setAuthPassword('maria123'); setAuthName('Maria Noor'); }
+  };
+
+  const isPlatformConnected = (platform) => accounts.some(acc => acc.platform.toLowerCase() === platform.toLowerCase());
+
+  // ── Platform icon helper ─────────────────────────────────────────────────
+  const platformIcon = (p) => ({ linkedin: '💼', instagram: '📸', twitter: '🐦', facebook: '📘' }[p] || '📡');
+  const platformColor = (p) => ({ linkedin: '#0A66C2', instagram: '#E1306C', twitter: '#1DA1F2', facebook: '#1877F2' }[p] || '#6366f1');
+
+  // ── Login Screen ─────────────────────────────────────────────────────────
+  if (!token) {
+    return (
+      <>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: '20px' }}>
+        <div className="glass-panel" style={{ width: '100%', maxWidth: '480px', padding: '40px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+            <div style={{ fontSize: '40px', marginBottom: '12px' }}>⚡</div>
+            <h1 style={{ fontSize: '28px', fontWeight: '800', marginBottom: '8px', background: 'linear-gradient(135deg, #6366f1 0%, #d946ef 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              ClickTake Technologies
+            </h1>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '15px' }}>AI-Powered Social Media Content Engine</p>
+          </div>
+          {errorMsg && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--accent-error)', color: '#fca5a5', padding: '12px', borderRadius: '8px', fontSize: '14px', marginBottom: '20px' }}>{errorMsg}</div>}
+          <form onSubmit={handleAuth}>
+            {isRegister && (
+              <div className="form-group">
+                <label>Name</label>
+                <input type="text" value={authName} onChange={e => setAuthName(e.target.value)} required placeholder="Your Name" />
+              </div>
+            )}
+            <div className="form-group">
+              <label>Email Address</label>
+              <input type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} required placeholder="e.g. admin@social.com" />
+            </div>
+            <div className="form-group">
+              <label>Password</label>
+              <input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} required placeholder="••••••••" />
+            </div>
+            <button type="submit" className="btn" style={{ width: '100%', marginTop: '10px' }} disabled={loading}>
+              {loading ? 'Authenticating...' : isRegister ? 'Create Account' : 'Sign In'}
+            </button>
+          </form>
+          <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '14px' }}>
+            <span style={{ color: 'var(--text-secondary)' }}>{isRegister ? 'Already have an account? ' : "Don't have an account? "}</span>
+            <button className="nav-btn" style={{ padding: '0', color: 'var(--primary)', fontWeight: '600' }} onClick={() => setIsRegister(!isRegister)}>
+              {isRegister ? 'Sign In' : 'Create One'}
+            </button>
+          </div>
+          {!isRegister && (
+            <div style={{ marginTop: '10px', textAlign: 'center' }}>
+              <button className="nav-btn" style={{ padding: '0', color: 'var(--text-muted)', fontSize: '13px' }} onClick={() => setShowResetModal(true)}>
+                🔒 Forgot your password?
+              </button>
+            </div>
+          )}
+          <div style={{ marginTop: '30px', borderTop: '1px solid var(--border-glass)', paddingTop: '20px' }}>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '10px' }}>QUICK LOGIN DEMO CREDENTIALS</p>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button onClick={() => quickFill('admin')} className="btn btn-secondary" style={{ fontSize: '12px', padding: '6px 12px' }}>Admin Dashboard</button>
+              <button onClick={() => quickFill('requester')} className="btn btn-secondary" style={{ fontSize: '12px', padding: '6px 12px' }}>Content Requester</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      {/* Reset Password modal available on login screen too */}
+      {showResetModal && (
+        <div className="modal-overlay" onClick={e => { if (e.target.className === 'modal-overlay') setShowResetModal(false); }}>
+          <div className="modal-content" style={{ maxWidth: '480px' }}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '20px' }}>🔒</span>
+                <h2 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>Reset Password</h2>
+              </div>
+              <button onClick={() => setShowResetModal(false)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#fff', fontSize: '18px', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+            </div>
+            <form onSubmit={handlePasswordReset}>
+              <div className="modal-body" style={{ gap: '16px' }}>
+                <div className="form-group">
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--primary)' }}>Registered Email Address</label>
+                  <input type="email" className="modal-input" value={resetEmail} onChange={e => setResetEmail(e.target.value)} placeholder="user@example.com" required />
+                </div>
+                <div className="form-group">
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--primary)' }}>New Password</label>
+                  <input type="password" className="modal-input" value={resetNewPassword} onChange={e => setResetNewPassword(e.target.value)} placeholder="Enter new password" required minLength={6} />
+                </div>
+                {errorMsg && <div style={{ color: '#fca5a5', fontSize: '13px' }}>{errorMsg}</div>}
+                {successMsg && <div style={{ color: '#a7f3d0', fontSize: '13px' }}>{successMsg}</div>}
+              </div>
+              <div className="modal-footer">
+                <button type="button" onClick={() => setShowResetModal(false)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '13px' }}>Cancel</button>
+                <button type="submit" className="btn" disabled={loading} style={{ padding: '8px 20px', fontSize: '13px' }}>{loading ? '🔄 Resetting...' : '🔒 Reset Password'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
+    );
+  }
+
+  // ── Draft Card Component ──────────────────────────────────────────────────
+  const DraftCard = ({ draft }) => {
+    const meta = parseDraftMeta(draft.description);
+    const platforms = Object.keys(meta.platformPreviews);
+    const activePlatform = activePlatformTab[draft.id] || (platforms[0] || '');
+    const isExpanded = expandedDescriptions[draft.id] || false;
+    const isImproving = improvingDrafts[draft.id] || false;
+    const isRegeneratingImg = regeneratingImages[draft.id] || false;
+    const imgTs = imageTimestamps[draft.id] || '';
+    const improveTxt = improvementTexts[draft.id] || '';
+
+    const statusColors = {
+      'Under Review': '#f59e0b',
+      'Published': '#10b981',
+      'Rejected': '#ef4444',
+      'Publish Failed': '#f97316',
+      'Approved': '#6366f1',
+      'Draft': '#64748b'
+    };
+    const statusColor = statusColors[draft.status] || '#64748b';
+
+    return (
+      <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0', overflow: 'hidden', padding: '0' }}>
+
+        {/* ── Header ── */}
+        <div style={{ padding: '22px 24px 18px', borderBottom: '1px solid var(--border-glass)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                {meta.improved && (
+                  <span style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid #10b981', color: '#10b981', fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '12px', letterSpacing: '0.5px' }}>
+                    ✨ AI IMPROVED
+                  </span>
+                )}
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                  #{draft.id} • {new Date(draft.created_at).toLocaleString()}
+                </span>
+              </div>
+              <h3 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', lineHeight: '1.3', marginBottom: '0' }}>
+                {draft.title}
+              </h3>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+              <button
+                onClick={() => openPreviewModal(draft)}
+                className="btn btn-secondary"
+                style={{ padding: '6px 14px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                👁️ Preview Post
+              </button>
+              <span style={{
+                background: `${statusColor}22`,
+                border: `1px solid ${statusColor}`,
+                color: statusColor,
+                fontSize: '11px', fontWeight: '700', padding: '4px 12px', borderRadius: '20px', letterSpacing: '0.5px'
+              }}>
+                {draft.status.toUpperCase()}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Image + Caption Row ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '0' }}>
+
+          {/* Image */}
+          <div style={{ position: 'relative', borderRight: '1px solid var(--border-glass)', minHeight: '280px', background: 'rgba(0,0,0,0.25)' }}>
+            {isRegeneratingImg ? (
+              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', gap: '12px' }}>
+                <div style={{ width: '36px', height: '36px', border: '3px solid var(--border-glass)', borderTop: '3px solid var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Generating image…</span>
+              </div>
+            ) : draft.image_url ? (
+              <img
+                src={`${API_BASE}${draft.image_url}${imgTs ? '?t=' + imgTs : ''}`}
+                alt={draft.title}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', minHeight: '280px' }}
+              />
+            ) : (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '280px', color: 'var(--text-muted)', fontSize: '13px', flexDirection: 'column', gap: '8px' }}>
+                <span style={{ fontSize: '32px' }}>🖼️</span>
+                <span>No image generated</span>
+              </div>
+            )}
+            {/* Regen image button overlay */}
+            {user?.role === 'admin' && !isRegeneratingImg && (
+              <button
+                onClick={() => handleRegenerateImage(draft.id)}
+                title="Regenerate Image"
+                style={{
+                  position: 'absolute', bottom: '10px', right: '10px',
+                  background: 'rgba(0,0,0,0.65)', border: '1px solid rgba(255,255,255,0.2)',
+                  color: '#fff', fontSize: '11px', padding: '6px 10px', borderRadius: '6px',
+                  cursor: 'pointer', backdropFilter: 'blur(6px)', fontWeight: '600',
+                  transition: 'all 0.2s'
+                }}
+              >
+                🔄 New Image
+              </button>
+            )}
+          </div>
+
+          {/* Caption + Tags */}
+          <div style={{ display: 'flex', flexDirection: 'column', padding: '20px 24px', gap: '16px' }}>
+
+            {/* Caption */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase' }}>📝 Post Caption</span>
+              </div>
+              <div style={{
+                background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.12)',
+                borderRadius: '8px', padding: '14px', fontSize: '14px', lineHeight: '1.7',
+                color: 'var(--text-primary)', whiteSpace: 'pre-wrap', maxHeight: isExpanded ? 'none' : '160px',
+                overflow: 'hidden', position: 'relative'
+              }}>
+                {draft.caption}
+                {!isExpanded && draft.caption && draft.caption.length > 300 && (
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '50px', background: 'linear-gradient(transparent, rgba(18,18,28,0.95))' }} />
+                )}
+              </div>
+              {draft.caption && draft.caption.length > 300 && (
+                <button onClick={() => setExpandedDescriptions(prev => ({ ...prev, [draft.id]: !isExpanded }))}
+                  style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '12px', cursor: 'pointer', marginTop: '6px', padding: '0', fontWeight: '600' }}>
+                  {isExpanded ? '▲ Show less' : '▼ Read full caption'}
+                </button>
+              )}
+            </div>
+
+            {/* CTA Badge */}
+            {meta.cta && (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(217,70,239,0.10))',
+                border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px',
+                padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px'
+              }}>
+                <span style={{ fontSize: '16px' }}>🎯</span>
+                <div>
+                  <span style={{ fontSize: '9px', color: 'var(--primary)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase', display: 'block' }}>Call to Action</span>
+                  <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: '600' }}>{meta.cta}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Hashtags */}
+            <div>
+              <span style={{ fontSize: '10px', color: 'var(--secondary)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>#️⃣ Hashtags</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {(draft.hashtags || '').split(' ').filter(Boolean).map((tag, i) => (
+                  <span key={i} style={{
+                    background: 'rgba(217,70,239,0.08)', border: '1px solid rgba(217,70,239,0.2)',
+                    color: 'var(--secondary)', fontSize: '12px', padding: '3px 10px', borderRadius: '20px',
+                    fontFamily: 'monospace', fontWeight: '600'
+                  }}>{tag}</span>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        {/* ── Key Points ── */}
+        {meta.keyPoints.length > 0 && (
+          <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-glass)', background: 'rgba(255,255,255,0.01)' }}>
+            <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '10px' }}>💡 Key Talking Points</span>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px' }}>
+              {meta.keyPoints.map((pt, i) => (
+                <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                  <span style={{ color: 'var(--accent)', fontSize: '12px', marginTop: '2px', flexShrink: 0 }}>▸</span>
+                  <span style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>{pt}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Platform Previews ── */}
+        {platforms.length > 0 && (
+          <div style={{ borderTop: '1px solid var(--border-glass)' }}>
+            {/* Platform tabs */}
+            <div style={{ display: 'flex', borderBottom: '1px solid var(--border-glass)' }}>
+              {platforms.map(p => (
+                <button
+                  key={p}
+                  onClick={() => setActivePlatformTab(prev => ({ ...prev, [draft.id]: p }))}
+                  style={{
+                    padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer',
+                    fontSize: '12px', fontWeight: '700', letterSpacing: '0.5px',
+                    color: activePlatform === p ? platformColor(p) : 'var(--text-muted)',
+                    borderBottom: activePlatform === p ? `2px solid ${platformColor(p)}` : '2px solid transparent',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {platformIcon(p)} {p.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            {/* Active platform content */}
+            <div style={{ padding: '16px 24px' }}>
+              <div style={{
+                background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '14px',
+                fontSize: '13px', lineHeight: '1.8', color: 'var(--text-secondary)',
+                whiteSpace: 'pre-wrap', maxHeight: '180px', overflowY: 'auto',
+                fontFamily: activePlatform === 'twitter' ? 'monospace' : 'inherit'
+              }}>
+                {meta.platformPreviews[activePlatform] || 'No preview available.'}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── AI Improvement Panel (Admin only) ── */}
+        {user?.role === 'admin' && draft.status === 'Under Review' && (
+          <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-glass)', background: 'rgba(99,102,241,0.03)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+              <span style={{ fontSize: '14px' }}>🤖</span>
+              <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase' }}>AI Improvement Directive</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>— type your opinion and AI will instantly regenerate</span>
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <textarea
+                value={improveTxt}
+                onChange={e => setImprovementTexts(prev => ({ ...prev, [draft.id]: e.target.value }))}
+                placeholder="e.g. 'Make the caption more urgent and emphasize the deadline. Add more emojis and make it exciting for a younger audience.'"
+                rows={2}
+                style={{ flex: 1, padding: '10px 14px', fontSize: '13px', resize: 'vertical', lineHeight: '1.5', borderRadius: '8px', minHeight: '60px' }}
+              />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
+                <button
+                  onClick={() => handleImprove(draft.id)}
+                  disabled={!improveTxt.trim() || isImproving}
+                  className="btn"
+                  style={{ padding: '10px 18px', fontSize: '13px', whiteSpace: 'nowrap', minWidth: '160px' }}
+                >
+                  {isImproving ? '🔄 Improving...' : '✨ Apply Improvement'}
+                </button>
+                <button
+                  onClick={() => handleApprove(draft.id)}
+                  className="btn"
+                  style={{ padding: '10px 18px', fontSize: '13px', background: 'linear-gradient(135deg, #10b981, #059669)', whiteSpace: 'nowrap' }}
+                >
+                  🚀 Approve & Publish
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Action bar for other states ── */}
+        {user?.role === 'admin' && draft.status === 'Publish Failed' && (
+          <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="btn btn-outline" onClick={() => handleApprove(draft.id)} style={{ padding: '8px 16px', fontSize: '13px' }}>
+              🔄 Retry Publishing
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ── Main Layout ──────────────────────────────────────────────────────────
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      {/* Spinner keyframe */}
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+      {/* Header */}
+      <header className="app-header">
+        <div className="brand">
+          <span style={{ fontSize: '24px' }}>⚡</span>
+          <span>ClickTake Content Engine</span>
+        </div>
+        <nav className="nav-links">
+          <button className={`nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>🏠 Dashboard</button>
+          <button className={`nav-btn ${activeTab === 'campaigns' ? 'active' : ''}`} onClick={() => { setActiveTab('campaigns'); fetchCampaigns(); }}>🎯 Campaigns</button>
+          <button className={`nav-btn ${activeTab === 'analytics' ? 'active' : ''}`} onClick={() => { setActiveTab('analytics'); fetchAnalytics(); }}>📊 Analytics</button>
+          <button className={`nav-btn ${activeTab === 'devops' ? 'active' : ''}`} onClick={() => { setActiveTab('devops'); fetchSystemDiagnostics(); }}>🛠️ Skills & System</button>
+        </nav>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ textAlign: 'right' }}>
+            <p style={{ fontSize: '14px', fontWeight: '600' }}>{user?.name}</p>
+            <span className={`status-pill ${user?.role === 'admin' ? 'approved' : 'draft'}`} style={{ fontSize: '10px', padding: '2px 8px' }}>{user?.role?.toUpperCase()}</span>
+          </div>
+          <button className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '13px' }} onClick={handleLogout}>Log Out</button>
+        </div>
+      </header>
+
+      {/* Messages */}
+      <div style={{ padding: '0 40px', maxWidth: '1600px', width: '100%', margin: '20px auto 0' }}>
+        {successMsg && (
+          <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid var(--accent)', color: '#a7f3d0', padding: '12px 16px', borderRadius: '8px', fontSize: '14px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {successMsg}
+            <button onClick={() => setSuccessMsg('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#a7f3d0', cursor: 'pointer', fontSize: '16px' }}>×</button>
+          </div>
+        )}
+        {errorMsg && (
+          <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--accent-error)', color: '#fca5a5', padding: '12px 16px', borderRadius: '8px', fontSize: '14px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {errorMsg}
+            <button onClick={() => setErrorMsg('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: '16px' }}>×</button>
+          </div>
+        )}
+      </div>
+
+      {/* Dashboard Tab */}
+      {activeTab === 'dashboard' && (
+        <div className="dashboard-grid">
+
+          {/* Left column */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+
+            {/* Prompt Form */}
+            <div className="glass-panel">
+              <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px' }}>1. Draft AI Campaign Content</h2>
+              <form onSubmit={handlePromptSubmit}>
+                <div className="form-group">
+                  <label htmlFor="promptInput">Campaign Topic or Concept</label>
+                  <textarea
+                    id="promptInput"
+                    value={promptText}
+                    onChange={e => setPromptText(e.target.value)}
+                    rows={3}
+                    required
+                    placeholder="e.g. Announcing our summer developer hackathon with a $5k cash prize, starting August 1st!"
+                  />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                  <div className="form-group">
+                    <label>Target Channels</label>
+                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '8px' }}>
+                      {['linkedin', 'instagram', 'twitter', 'facebook'].map(plat => (
+                        <label key={plat} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedPlatforms.includes(plat)}
+                            onChange={e => {
+                              if (e.target.checked) setSelectedPlatforms([...selectedPlatforms, plat]);
+                              else setSelectedPlatforms(selectedPlatforms.filter(p => p !== plat));
+                            }}
+                            style={{ accentColor: 'var(--primary)', width: '16px', height: '16px' }}
+                          />
+                          {platformIcon(plat)} {plat.toUpperCase()}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="toneSelect" style={{ fontWeight: '600', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      🎨 Brand Writing Tone
+                    </label>
+                    <select
+                      id="toneSelect"
+                      value={tone}
+                      onChange={e => setTone(e.target.value)}
+                      style={{
+                        backgroundColor: '#1e1e38',
+                        color: '#f8fafc',
+                        fontWeight: '600',
+                        border: '1px solid rgba(99,102,241,0.3)',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                      }}
+                    >
+                      <option value="Professional">💼 Professional / Corporate</option>
+                      <option value="Bold">⚡ Bold / Energetic</option>
+                      <option value="Friendly">👋 Friendly / Social</option>
+                      <option value="Witty/Creative">😎 Witty / Playful</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                  <div className="form-group">
+                    <label style={{ fontWeight: '600', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      🎯 Link to Campaign <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '400' }}>(optional)</span>
+                    </label>
+                    <select
+                      value={selectedCampaignId}
+                      onChange={e => setSelectedCampaignId(e.target.value)}
+                      style={{
+                        backgroundColor: '#1e1e38',
+                        color: '#f8fafc',
+                        border: '1px solid var(--border-glass-bright)'
+                      }}
+                    >
+                      <option value="">— No Campaign —</option>
+                      {campaigns.map(c => (
+                        <option key={c.id} value={c.id}>🎯 {c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label style={{ fontWeight: '600', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        📅 Schedule Publish Date & Time <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '400' }}>(optional)</span>
+                      </label>
+                      {scheduledDateTime && (
+                        <button
+                          type="button"
+                          onClick={() => setScheduledDateTime('')}
+                          style={{ background: 'none', border: 'none', color: 'var(--accent-error)', fontSize: '11px', cursor: 'pointer', fontWeight: '600' }}
+                        >
+                          Clear Schedule
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="datetime-local"
+                        value={scheduledDateTime}
+                        onChange={e => setScheduledDateTime(e.target.value)}
+                        style={{
+                          backgroundColor: '#1e1e38',
+                          color: '#f8fafc',
+                          fontWeight: '600',
+                          border: scheduledDateTime ? '1px solid var(--accent)' : '1px solid var(--border-glass-bright)',
+                          boxShadow: scheduledDateTime ? '0 0 12px rgba(16,185,129,0.2)' : 'none'
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <button type="submit" className="btn" disabled={loading || selectedPlatforms.length === 0} style={{ minWidth: '220px' }}>
+                  {loading ? '🤖 Orchestrating AI Skills...' : '✨ Assemble AI Campaign'}
+                </button>
+              </form>
+            </div>
+
+            {/* Review Queue */}
+            <div>
+              <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>2. Campaign Review Queue
+                  <span style={{ marginLeft: '10px', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', color: 'var(--primary)', fontSize: '12px', padding: '2px 10px', borderRadius: '20px', fontWeight: '700' }}>
+                    {drafts.length} drafts
+                  </span>
+                </span>
+                <button onClick={fetchDrafts} className="btn btn-secondary" style={{ padding: '6px 14px', fontSize: '12px' }}>↻ Refresh Queue</button>
+              </h2>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                {drafts.length === 0 ? (
+                  <div className="glass-panel" style={{ textAlign: 'center', padding: '50px', color: 'var(--text-muted)' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>📭</div>
+                    <p>No drafts in queue. Submit a prompt to generate your first AI campaign!</p>
+                  </div>
+                ) : (
+                  drafts.map(draft => <DraftCard key={draft.id} draft={draft} />)
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right sidebar */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+
+            {/* Account connections */}
+            <div className="glass-panel">
+              <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px' }}>Account Connections</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {['linkedin', 'instagram', 'twitter', 'facebook'].map(plat => {
+                  const linkedObj = accounts.find(acc => acc.platform === plat);
+                  const isConnected = !!linkedObj;
+                  return (
+                    <div key={plat} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-glass)', background: isConnected ? 'rgba(16,185,129,0.04)' : 'transparent' }}>
+                      <span style={{ fontWeight: '600', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '16px' }}>{platformIcon(plat)}</span>
+                        {plat.charAt(0).toUpperCase() + plat.slice(1)}
+                      </span>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '20px', fontWeight: '700', letterSpacing: '0.5px', background: isConnected ? 'rgba(16,185,129,0.15)' : 'rgba(100,116,139,0.15)', color: isConnected ? '#10b981' : '#64748b', border: `1px solid ${isConnected ? '#10b981' : '#64748b'}40` }}>
+                          {isConnected ? 'LIVE' : 'OFF'}
+                        </span>
+                        {isConnected ? (
+                          <button onClick={() => handleDisconnectChannel(linkedObj.id)} style={{ background: 'transparent', border: 'none', color: 'var(--accent-error)', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>Unlink</button>
+                        ) : (
+                          <button onClick={() => handleConnectChannel(plat)} style={{ background: 'transparent', border: 'none', color: 'var(--primary)', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}>Link</button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Orchestration logs */}
+            <div className="glass-panel" style={{ maxHeight: '440px', display: 'flex', flexDirection: 'column' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px' }}>Orchestration Logs</h2>
+              <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {notifications.length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '14px', textAlign: 'center' }}>No log notifications yet.</p>
+                ) : (
+                  notifications.map(n => (
+                    <div key={n.id} style={{ fontSize: '12px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'rgba(255,255,255,0.01)' }}>
+                      <p style={{ color: 'var(--text-primary)', marginBottom: '2px' }}>{n.message}</p>
+                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{new Date(n.timestamp).toLocaleTimeString()}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Analytics Tab */}
+      {activeTab === 'analytics' && (
+        <div style={{ padding: '40px', maxWidth: '1600px', width: '100%', margin: '0 auto' }}>
+          <h2 style={{ fontSize: '24px', fontWeight: '700', marginBottom: '30px' }}>Campaign Engagement Analytics</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '40px' }}>
+            {[
+              { label: 'Campaign Reach', value: analyticsOverview.total_reach.toLocaleString(), sub: 'Active monitoring', color: 'var(--accent)' },
+              { label: 'Total Likes', value: analyticsOverview.total_likes.toLocaleString(), sub: 'Likes engagement rate', color: 'var(--primary)' },
+              { label: 'Shares & Retweets', value: analyticsOverview.total_shares.toLocaleString(), sub: 'Organic amplifiers', color: 'var(--secondary)' },
+              { label: 'Avg Click-Through Rate', value: `${(analyticsOverview.average_ctr * 100).toFixed(2)}%`, sub: 'Avg conversion clickrate', color: 'var(--accent)' },
+            ].map((kpi, i) => (
+              <div key={i} className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.05) 0%, rgba(217,70,239,0.05) 100%)' }}>
+                <h3 style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{kpi.label}</h3>
+                <p style={{ fontSize: '32px', fontWeight: '700', color: 'var(--text-primary)', margin: '8px 0 4px' }}>{kpi.value}</p>
+                <span style={{ fontSize: '12px', color: kpi.color, fontWeight: '600' }}>{kpi.sub}</span>
+              </div>
+            ))}
+          </div>
+          <div className="glass-panel">
+            <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px' }}>Published Posts Registry</h3>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border-glass)', color: 'var(--text-secondary)' }}>
+                    {['Post ID', 'Campaign Title', 'Platform', 'Published At', 'Reach', 'Likes', 'Comments', 'Shares', 'CTR'].map(h => (
+                      <th key={h} style={{ padding: '14px 16px', fontSize: '12px', fontWeight: '700', letterSpacing: '0.5px', textTransform: 'uppercase' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {publishedPosts.length === 0 ? (
+                    <tr><td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No published posts yet. Approve a draft to publish.</td></tr>
+                  ) : publishedPosts.map(p => (
+                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border-glass)' }}>
+                      <td style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '12px' }}>{p.platform_post_id}</td>
+                      <td style={{ padding: '14px 16px', fontWeight: '600' }}>{p.title}</td>
+                      <td style={{ padding: '14px 16px' }}>{platformIcon(p.platform)} {p.platform}</td>
+                      <td style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontSize: '13px' }}>{new Date(p.published_at).toLocaleString()}</td>
+                      <td style={{ padding: '14px 16px', fontWeight: '600' }}>{p.reach?.toLocaleString()}</td>
+                      <td style={{ padding: '14px 16px', color: 'var(--primary)' }}>{p.likes}</td>
+                      <td style={{ padding: '14px 16px' }}>{p.comments}</td>
+                      <td style={{ padding: '14px 16px', color: 'var(--secondary)' }}>{p.shares}</td>
+                      <td style={{ padding: '14px 16px', color: 'var(--accent)', fontWeight: '600' }}>{(p.ctr * 100).toFixed(2)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Campaign Manager Tab ─────────────────────────────────────────── */}
+      {activeTab === 'campaigns' && (
+        <div style={{ padding: '40px', maxWidth: '1200px', margin: '0 auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
+            <div>
+              <h2 style={{ fontSize: '28px', fontWeight: '800', color: 'var(--text-primary)', marginBottom: '6px' }}>🎯 Campaign Manager</h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Group prompts and posts under named campaigns. Track campaign-level reach, likes, and CTR.</p>
+            </div>
+            <button onClick={handleRunScheduledQueue} className="btn btn-secondary" style={{ padding: '10px 20px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              ⏰ Run Scheduled Queue
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: '28px', alignItems: 'start' }}>
+
+            {/* Create Campaign Panel */}
+            <div className="glass-panel" style={{ padding: '28px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '20px', color: 'var(--primary)' }}>✨ Create New Campaign</h3>
+              <form onSubmit={handleCreateCampaign} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div className="form-group">
+                  <label>Campaign Name</label>
+                  <input type="text" value={newCampaignName} onChange={e => setNewCampaignName(e.target.value)} placeholder="e.g. Summer Launch 2026" required />
+                </div>
+                <div className="form-group">
+                  <label>Target Platforms</label>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '8px' }}>
+                    {['linkedin', 'instagram', 'twitter', 'facebook'].map(plat => (
+                      <label key={plat} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '13px' }}>
+                        <input type="checkbox"
+                          checked={newCampaignPlatforms.includes(plat)}
+                          onChange={e => {
+                            if (e.target.checked) setNewCampaignPlatforms([...newCampaignPlatforms, plat]);
+                            else setNewCampaignPlatforms(newCampaignPlatforms.filter(p => p !== plat));
+                          }}
+                          style={{ accentColor: 'var(--primary)' }}
+                        />
+                        {platformIcon(plat)} {plat.charAt(0).toUpperCase() + plat.slice(1)}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="form-group">
+                    <label>Start Date</label>
+                    <input type="date" value={newCampaignStartDate} onChange={e => setNewCampaignStartDate(e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>End Date</label>
+                    <input type="date" value={newCampaignEndDate} onChange={e => setNewCampaignEndDate(e.target.value)} />
+                  </div>
+                </div>
+                <button type="submit" className="btn" disabled={loading || !newCampaignName.trim()} style={{ marginTop: '4px' }}>
+                  {loading ? '⏳ Creating...' : '🎯 Create Campaign'}
+                </button>
+              </form>
+            </div>
+
+            {/* Campaign List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {campaigns.length === 0 ? (
+                <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  No campaigns yet. Create one to group your content posts!
+                </div>
+              ) : campaigns.map(c => (
+                <div key={c.id} className="glass-panel" style={{ padding: '22px 26px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                    <div>
+                      <h3 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '4px' }}>{c.name}</h3>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        {c.target_platforms.split(',').map(p => p.trim()).filter(Boolean).map(p => (
+                          <span key={p} style={{ background: `${platformColor(p)}22`, color: platformColor(p), fontSize: '11px', padding: '2px 8px', borderRadius: '10px', fontWeight: '700' }}>{platformIcon(p)} {p.toUpperCase()}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>#{c.id} • {new Date(c.created_at).toLocaleDateString()}</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+                    <div style={{ textAlign: 'center', background: 'rgba(99,102,241,0.05)', borderRadius: '8px', padding: '12px' }}>
+                      <div style={{ fontSize: '22px', fontWeight: '800', color: 'var(--primary)' }}>{c.total_drafts}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Total Drafts</div>
+                    </div>
+                    <div style={{ textAlign: 'center', background: 'rgba(16,185,129,0.05)', borderRadius: '8px', padding: '12px' }}>
+                      <div style={{ fontSize: '22px', fontWeight: '800', color: 'var(--accent)' }}>{c.published_count}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Published</div>
+                    </div>
+                    {c.start_date && (
+                      <div style={{ textAlign: 'center', background: 'rgba(245,158,11,0.05)', borderRadius: '8px', padding: '12px' }}>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--accent-warning)' }}>{new Date(c.start_date).toLocaleDateString()}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Start Date</div>
+                      </div>
+                    )}
+                    {c.end_date && (
+                      <div style={{ textAlign: 'center', background: 'rgba(239,68,68,0.05)', borderRadius: '8px', padding: '12px' }}>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--accent-error)' }}>{new Date(c.end_date).toLocaleDateString()}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>End Date</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── DevOps & Skills Diagnostic Tab ───────────────────────────────── */}
+      {activeTab === 'devops' && (
+        <div style={{ padding: '40px', maxWidth: '1200px', margin: '0 auto' }}>
+          <div style={{ marginBottom: '32px' }}>
+            <h2 style={{ fontSize: '28px', fontWeight: '800', color: 'var(--text-primary)', marginBottom: '6px' }}>🛠️ Skills & System Diagnostics</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Live status for all 10 AI Skills, Cloud autoscaling, and API health monitoring.</p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '28px' }}>
+
+            {/* Skills Health */}
+            <div className="glass-panel" style={{ padding: '28px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '20px', color: 'var(--accent)' }}>⚡ AI Skills Status (10/10)</h3>
+              {systemHealth ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {Object.entries(systemHealth.active_skills_status || {}).map(([skill, status]) => (
+                    <div key={skill} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(16,185,129,0.04)', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.15)' }}>
+                      <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: '600' }}>{skill}</span>
+                      <span style={{ fontSize: '11px', fontWeight: '700', color: '#10b981', background: 'rgba(16,185,129,0.12)', padding: '2px 10px', borderRadius: '10px' }}>● {status.toUpperCase()}</span>
+                    </div>
+                  ))}
+                  <div style={{ marginTop: '12px', padding: '14px', background: 'rgba(99,102,241,0.05)', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>API Schema Consistency</div>
+                    <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--primary)' }}>{systemHealth.api_schema_consistency}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>Avg. Endpoint Latency</div>
+                    <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--accent-warning)' }}>{systemHealth.avg_endpoint_latency_ms} ms</div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>Loading skill diagnostics...</div>
+              )}
+            </div>
+
+            {/* Cloud Status + Security */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div className="glass-panel" style={{ padding: '28px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '20px', color: 'var(--secondary)' }}>☁️ Cloud & Deployment (Skill 8)</h3>
+                {cloudStatus ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Build Version</span>
+                      <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'monospace' }}>{cloudStatus.build_version}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Environment</span>
+                      <span style={{ fontSize: '12px', fontWeight: '700', color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '2px 10px', borderRadius: '10px' }}>{cloudStatus.environment.toUpperCase()}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Cluster Health</span>
+                      <span style={{ fontSize: '12px', fontWeight: '700', color: '#10b981' }}>● {cloudStatus.cluster_health}</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginTop: '4px' }}>
+                      <div style={{ textAlign: 'center', background: 'rgba(99,102,241,0.06)', borderRadius: '8px', padding: '10px' }}>
+                        <div style={{ fontSize: '20px', fontWeight: '800', color: 'var(--primary)' }}>{cloudStatus.autoscaling?.current_replicas}</div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Replicas</div>
+                      </div>
+                      <div style={{ textAlign: 'center', background: 'rgba(245,158,11,0.06)', borderRadius: '8px', padding: '10px' }}>
+                        <div style={{ fontSize: '20px', fontWeight: '800', color: '#f59e0b' }}>{cloudStatus.autoscaling?.cpu_utilization_pct}%</div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>CPU</div>
+                      </div>
+                      <div style={{ textAlign: 'center', background: 'rgba(217,70,239,0.06)', borderRadius: '8px', padding: '10px' }}>
+                        <div style={{ fontSize: '20px', fontWeight: '800', color: 'var(--secondary)' }}>{cloudStatus.autoscaling?.memory_utilization_pct}%</div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Memory</div>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>CI/CD Pipeline: <span style={{ color: '#10b981', fontWeight: '700' }}>{cloudStatus.cicd?.pipeline_status}</span> — Last deployed: {cloudStatus.cicd?.last_deployed ? new Date(cloudStatus.cicd.last_deployed).toLocaleString() : '—'}</div>
+                  </div>
+                ) : (
+                  <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '30px' }}>Loading cloud status...</div>
+                )}
+              </div>
+
+              <div className="glass-panel" style={{ padding: '28px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '16px', color: 'var(--accent-warning)' }}>🔐 Security & Compliance</h3>
+                {systemHealth?.security && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {Object.entries(systemHealth.security).map(([key, val]) => (
+                      <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '13px', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</span>
+                        <span style={{ fontSize: '12px', fontWeight: '700', color: '#10b981' }}>✓ {val}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button onClick={fetchSystemDiagnostics} className="btn btn-secondary" style={{ width: '100%', marginTop: '16px', padding: '8px', fontSize: '13px' }}>🔄 Refresh Diagnostics</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Password Reset Modal ─────────────────────────────────────────── */}
+      {showResetModal && (
+        <div className="modal-overlay" onClick={e => { if (e.target.className === 'modal-overlay') setShowResetModal(false); }}>
+          <div className="modal-content" style={{ maxWidth: '480px' }}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '20px' }}>🔒</span>
+                <h2 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>Reset Password</h2>
+              </div>
+              <button onClick={() => setShowResetModal(false)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#fff', fontSize: '18px', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+            </div>
+            <form onSubmit={handlePasswordReset}>
+              <div className="modal-body" style={{ gap: '16px' }}>
+                <div className="form-group">
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--primary)' }}>Registered Email Address</label>
+                  <input type="email" className="modal-input" value={resetEmail} onChange={e => setResetEmail(e.target.value)} placeholder="user@example.com" required />
+                </div>
+                <div className="form-group">
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--primary)' }}>New Password</label>
+                  <input type="password" className="modal-input" value={resetNewPassword} onChange={e => setResetNewPassword(e.target.value)} placeholder="Enter new password" required minLength={6} />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" onClick={() => setShowResetModal(false)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '13px' }}>Cancel</button>
+                <button type="submit" className="btn" disabled={loading} style={{ padding: '8px 20px', fontSize: '13px' }}>{loading ? '🔄 Resetting...' : '🔒 Reset Password'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Screen Overlay Post Preview Modal ────────────────────────────── */}
+      {previewDraft && (
+        <div className="modal-overlay" onClick={(e) => { if (e.target.className === 'modal-overlay') closePreviewModal(); }}>
+          <div className="modal-content">
+
+            {/* Modal Header */}
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '22px' }}>👁️</span>
+                <div>
+                  <h2 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                    {isEditingPreview ? 'Edit Social Media Post' : 'Post Screen Preview'}
+                  </h2>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                    Draft #{previewDraft.id} • Status: {previewDraft.status.toUpperCase()}
+                  </span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {!isEditingPreview && (
+                  <button
+                    onClick={() => setIsEditingPreview(true)}
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 14px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    ✏️ Edit Post
+                  </button>
+                )}
+                <button
+                  onClick={closePreviewModal}
+                  style={{
+                    background: 'rgba(255,255,255,0.08)', border: 'none', color: '#fff',
+                    fontSize: '18px', width: '32px', height: '32px', borderRadius: '50%',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="modal-body">
+              {isEditingPreview ? (
+                /* EDIT FORM MODE */
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div className="form-group">
+                    <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--primary)' }}>Post Title</label>
+                    <input
+                      type="text"
+                      className="modal-input"
+                      value={editForm.title}
+                      onChange={e => setEditForm(prev => ({ ...prev, title: e.target.value }))}
+                      placeholder="Post Title"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--primary)' }}>Post Caption</label>
+                    <textarea
+                      className="modal-textarea"
+                      rows={5}
+                      value={editForm.caption}
+                      onChange={e => setEditForm(prev => ({ ...prev, caption: e.target.value }))}
+                      placeholder="Post Caption"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--secondary)' }}>Hashtags</label>
+                    <input
+                      type="text"
+                      className="modal-input"
+                      value={editForm.hashtags}
+                      onChange={e => setEditForm(prev => ({ ...prev, hashtags: e.target.value }))}
+                      placeholder="#hashtag1 #hashtag2"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)' }}>Description & Metadata</label>
+                    <textarea
+                      className="modal-textarea"
+                      rows={4}
+                      value={editForm.description}
+                      onChange={e => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                      placeholder="Detailed post description"
+                    />
+                  </div>
+                </div>
+              ) : (
+                /* DISPLAY / PREVIEW MODE */
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  
+                  {/* Image + Title Banner */}
+                  <div style={{ display: 'grid', gridTemplateColumns: previewDraft.image_url ? '240px 1fr' : '1fr', gap: '20px', background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
+                    {previewDraft.image_url && (
+                      <img
+                        src={`${API_BASE}${previewDraft.image_url}${imageTimestamps[previewDraft.id] ? '?t=' + imageTimestamps[previewDraft.id] : ''}`}
+                        alt={previewDraft.title}
+                        style={{ width: '100%', height: '180px', objectFit: 'cover', borderRadius: '8px' }}
+                      />
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <h3 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '8px' }}>
+                        {previewDraft.title}
+                      </h3>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                        {(previewDraft.hashtags || '').split(' ').filter(Boolean).map((tag, i) => (
+                          <span key={i} style={{ background: 'rgba(217,70,239,0.1)', color: 'var(--secondary)', fontSize: '12px', padding: '2px 8px', borderRadius: '12px', fontFamily: 'monospace' }}>
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Platform Previews Bar */}
+                  {(() => {
+                    const meta = parseDraftMeta(previewDraft.description);
+                    const platforms = Object.keys(meta.platformPreviews).length > 0
+                      ? Object.keys(meta.platformPreviews)
+                      : ['linkedin', 'instagram', 'twitter', 'facebook'];
+                    const activeP = platforms.includes(modalPlatformTab) ? modalPlatformTab : platforms[0];
+
+                    return (
+                      <div style={{ border: '1px solid var(--border-glass)', borderRadius: '12px', overflow: 'hidden' }}>
+                        <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', borderBottom: '1px solid var(--border-glass)' }}>
+                          {platforms.map(p => (
+                            <button
+                              key={p}
+                              onClick={() => setModalPlatformTab(p)}
+                              style={{
+                                padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer',
+                                fontSize: '13px', fontWeight: '700',
+                                color: activeP === p ? platformColor(p) : 'var(--text-muted)',
+                                borderBottom: activeP === p ? `2px solid ${platformColor(p)}` : '2px solid transparent'
+                              }}
+                            >
+                              {platformIcon(p)} {p.toUpperCase()} PREVIEW
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{ padding: '18px', background: 'rgba(0,0,0,0.15)', fontSize: '14px', lineHeight: '1.7', whiteSpace: 'pre-wrap', color: 'var(--text-primary)' }}>
+                          {meta.platformPreviews[activeP] || previewDraft.caption}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Caption */}
+                  <div style={{ background: 'rgba(99,102,241,0.03)', border: '1px solid rgba(99,102,241,0.15)', borderRadius: '12px', padding: '18px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>📝 Full Post Caption</span>
+                    <div style={{ fontSize: '14px', lineHeight: '1.7', color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>
+                      {previewDraft.caption}
+                    </div>
+                  </div>
+
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="modal-footer">
+              {isEditingPreview ? (
+                <>
+                  <button onClick={() => setIsEditingPreview(false)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '13px' }}>
+                    Cancel
+                  </button>
+                  <button onClick={handleSavePreviewContent} disabled={savingPreview} className="btn" style={{ padding: '8px 20px', fontSize: '13px' }}>
+                    {savingPreview ? '💾 Saving...' : '💾 Save Changes'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => setIsEditingPreview(true)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '13px' }}>
+                    ✏️ Edit Post
+                  </button>
+                  {user?.role === 'admin' && previewDraft.status !== 'Published' && (
+                    <button
+                      onClick={() => { handlePublishDraft(previewDraft.id); }}
+                      className="btn"
+                      style={{ padding: '8px 20px', fontSize: '13px', background: 'linear-gradient(135deg, #10b981, #059669)' }}
+                    >
+                      🚀 Approve & Publish Now
+                    </button>
+                  )}
+                  <button onClick={closePreviewModal} className="btn btn-outline" style={{ padding: '8px 16px', fontSize: '13px' }}>
+                    Close
+                  </button>
+                </>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
