@@ -9,7 +9,8 @@ def write_content(prompt_text: str, tone: str = "Professional") -> dict:
     detailed description, CTA, key talking points, target audience, and
     an image_prompt for contextual image generation.
     """
-    api_key = os.environ.get("GEMINI_API_KEY")
+    gemini_api_key = os.environ.get("GEMINI_API_KEY")
+    groq_api_key = os.environ.get("GROQ_API_KEY")
 
     system_instruction = (
         f"You are a world-class social media copywriter and content strategist. "
@@ -28,9 +29,42 @@ def write_content(prompt_text: str, tone: str = "Professional") -> dict:
         f"Be specific about colors, mood, objects, setting, and style (e.g., 'A dynamic digital illustration of developers coding at night with neon blue and purple lighting, holographic code streams floating in the air, energetic and futuristic atmosphere, dark background with vibrant accent colors')."
     )
 
-    if api_key:
+    if groq_api_key:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {groq_api_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": "llama3-70b-8192",
+                "messages": [
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user", "content": f"Topic / Prompt: {prompt_text}"}
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.85
+            }
+            response = requests.post(url, headers=headers, json=payload, timeout=8)
+            if response.status_code == 200:
+                result_json = response.json()
+                text_content = result_json['choices'][0]['message']['content']
+                data = json.loads(text_content)
+                return {
+                    "title": data.get("title", f"Feature: {prompt_text[:50]}"),
+                    "caption": data.get("caption", _fallback_caption(prompt_text, tone)),
+                    "description": data.get("description", prompt_text),
+                    "cta": data.get("cta", "Learn more and join the conversation!"),
+                    "key_points": data.get("key_points", []),
+                    "target_audience": data.get("target_audience", "General audience"),
+                    "image_prompt": data.get("image_prompt", _fallback_image_prompt(prompt_text))
+                }
+        except Exception as e:
+            print(f"[ContentWriting] Groq API call failed: {e}. Falling back to Gemini.")
+
+    if gemini_api_key:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_api_key}"
             headers = {"Content-Type": "application/json"}
             payload = {
                 "contents": [{
@@ -44,7 +78,7 @@ def write_content(prompt_text: str, tone: str = "Professional") -> dict:
                     "maxOutputTokens": 2048
                 }
             }
-            response = requests.post(url, headers=headers, json=payload, timeout=4)
+            response = requests.post(url, headers=headers, json=payload, timeout=8)
             if response.status_code == 200:
                 result_json = response.json()
                 text_content = result_json['candidates'][0]['content']['parts'][0]['text']
@@ -59,7 +93,7 @@ def write_content(prompt_text: str, tone: str = "Professional") -> dict:
                     "image_prompt": data.get("image_prompt", _fallback_image_prompt(prompt_text))
                 }
         except Exception as e:
-            print(f"[ContentWriting] API call failed: {e}. Falling back to heuristic engine.")
+            print(f"[ContentWriting] Gemini API call failed: {e}. Falling back to heuristic engine.")
 
     # Rich heuristic fallback (offline mode)
     return _heuristic_content(prompt_text, tone)
@@ -71,7 +105,8 @@ def regenerate_with_feedback(original_title: str, original_caption: str, origina
     Regenerates post content based on reviewer feedback / opinion.
     Takes the existing draft content + a critique comment and produces an improved version.
     """
-    api_key = os.environ.get("GEMINI_API_KEY")
+    gemini_api_key = os.environ.get("GEMINI_API_KEY")
+    groq_api_key = os.environ.get("GROQ_API_KEY")
 
     system_instruction = (
         f"You are a world-class social media copywriter. A reviewer has given feedback on an existing draft. "
@@ -96,9 +131,42 @@ def regenerate_with_feedback(original_title: str, original_caption: str, origina
         f"Make it substantially better than the original."
     )
 
-    if api_key:
+    if groq_api_key:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {groq_api_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": "llama3-70b-8192",
+                "messages": [
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user", "content": improvement_prompt}
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.9
+            }
+            response = requests.post(url, headers=headers, json=payload, timeout=8)
+            if response.status_code == 200:
+                result_json = response.json()
+                text_content = result_json['choices'][0]['message']['content']
+                data = json.loads(text_content)
+                return {
+                    "title": data.get("title", original_title),
+                    "caption": data.get("caption", original_caption),
+                    "description": data.get("description", original_description),
+                    "cta": data.get("cta", "Learn more!"),
+                    "key_points": data.get("key_points", []),
+                    "target_audience": data.get("target_audience", "General audience"),
+                    "image_prompt": data.get("image_prompt", _fallback_image_prompt(original_title))
+                }
+        except Exception as e:
+            print(f"[ContentWriting] Groq Regeneration API call failed: {e}. Falling back to Gemini.")
+
+    if gemini_api_key:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_api_key}"
             headers = {"Content-Type": "application/json"}
             payload = {
                 "contents": [{
@@ -112,7 +180,7 @@ def regenerate_with_feedback(original_title: str, original_caption: str, origina
                     "maxOutputTokens": 2048
                 }
             }
-            response = requests.post(url, headers=headers, json=payload, timeout=4)
+            response = requests.post(url, headers=headers, json=payload, timeout=8)
             if response.status_code == 200:
                 result_json = response.json()
                 text_content = result_json['candidates'][0]['content']['parts'][0]['text']
@@ -127,7 +195,7 @@ def regenerate_with_feedback(original_title: str, original_caption: str, origina
                     "image_prompt": data.get("image_prompt", _fallback_image_prompt(original_title))
                 }
         except Exception as e:
-            print(f"[ContentWriting] Regeneration API call failed: {e}. Applying heuristic improvement.")
+            print(f"[ContentWriting] Gemini Regeneration API call failed: {e}. Applying heuristic improvement.")
 
     # Fallback: apply the opinion as a prefix note to the existing content
     improved_caption = (

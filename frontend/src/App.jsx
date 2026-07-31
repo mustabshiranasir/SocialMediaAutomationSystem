@@ -135,8 +135,13 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: authEmail, password: authPassword, name: authName, role: 'requester' })
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || 'Registration failed');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const detailMsg = Array.isArray(data.detail)
+            ? data.detail.map(d => `${d.loc ? d.loc.slice(1).join('.') + ': ' : ''}${d.msg}`).join(', ')
+            : (typeof data.detail === 'string' ? data.detail : (data.message || 'Registration failed'));
+          throw new Error(detailMsg);
+        }
         setToken(data.access_token); setUser(data.user);
         localStorage.setItem('token', data.access_token);
         localStorage.setItem('user', JSON.stringify(data.user));
@@ -147,15 +152,20 @@ export default function App() {
         const res = await fetch(`${API_BASE}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: params
+          body: params.toString()
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || 'Login failed');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const detailMsg = Array.isArray(data.detail)
+            ? data.detail.map(d => `${d.loc ? d.loc.slice(1).join('.') + ': ' : ''}${d.msg}`).join(', ')
+            : (typeof data.detail === 'string' ? data.detail : (data.message || 'Login failed'));
+          throw new Error(detailMsg);
+        }
         setToken(data.access_token); setUser(data.user);
         localStorage.setItem('token', data.access_token);
         localStorage.setItem('user', JSON.stringify(data.user));
       }
-    } catch (err) { setErrorMsg(err.message); }
+    } catch (err) { setErrorMsg(err.message || 'Authentication failed'); }
     finally { setLoading(false); }
   };
 
@@ -483,9 +493,9 @@ export default function App() {
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: '20px' }}>
         <div className="glass-panel" style={{ width: '100%', maxWidth: '480px', padding: '40px' }}>
           <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-            <div style={{ fontSize: '40px', marginBottom: '12px' }}>⚡</div>
-            <h1 style={{ fontSize: '28px', fontWeight: '800', marginBottom: '8px', background: 'linear-gradient(135deg, #6366f1 0%, #d946ef 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              ClickTake Technologies
+            <img src="https://media.licdn.com/dms/image/v2/D4D0BAQHIO-OBECZQPQ/company-logo_200_200/company-logo_200_200/0/1697892174722?e=2147483647&v=beta&t=iwbyDiYKZkyx2nsJh3Q2FD3sGCXOwSyWDfmZ70xVd2g" alt="ClickTake Technologies" style={{ width: '140px', height: '140px', objectFit: 'contain', marginBottom: '16px', borderRadius: '12px', background: '#fff', padding: '10px' }} />
+            <h1 style={{ fontSize: '24px', fontWeight: '800', marginBottom: '8px', color: 'var(--text-primary)' }}>
+              Welcome to ClickTake
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '15px' }}>AI-Powered Social Media Content Engine</p>
           </div>
@@ -588,24 +598,131 @@ export default function App() {
     };
     const statusColor = statusColors[draft.status] || '#64748b';
 
+    // Mock platform previews
+    const renderSocialPreview = () => {
+      const textContent = meta.platformPreviews[activePlatform] || draft.caption || '';
+      const hasImage = !!draft.image_url;
+      const imageUrl = `${API_BASE}${draft.image_url}${imgTs ? '?t=' + imgTs : ''}`;
+
+      if (activePlatform === 'twitter' || activePlatform === 'x') {
+        return (
+          <div style={{ background: '#000', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '16px', color: '#fff', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif', textAlign: 'left' }}>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <img src="https://media.licdn.com/dms/image/v2/D4D0BAQHIO-OBECZQPQ/company-logo_200_200/company-logo_200_200/0/1697892174722?e=2147483647&v=beta&t=iwbyDiYKZkyx2nsJh3Q2FD3sGCXOwSyWDfmZ70xVd2g" alt="Avatar" style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#fff' }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '15px' }}>
+                  <span style={{ fontWeight: '700' }}>ClickTake Tech</span>
+                  <span style={{ color: '#71767b' }}>@ClickTake</span>
+                  <span style={{ color: '#71767b' }}>• Just now</span>
+                </div>
+                <div style={{ fontSize: '15px', lineHeight: '1.5', marginTop: '4px', whiteSpace: 'pre-wrap', color: '#e7e9ea' }}>{textContent}</div>
+                {hasImage && (
+                  <div style={{ marginTop: '12px', borderRadius: '16px', overflow: 'hidden', border: '1px solid #2f3336' }}>
+                    <img src={imageUrl} alt="Post" style={{ width: '100%', display: 'block', maxHeight: '280px', objectFit: 'cover' }} />
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#71767b', marginTop: '12px', maxWidth: '320px', fontSize: '13px' }}>
+                  <span>Reply</span>
+                  <span>Retweet</span>
+                  <span>Like</span>
+                  <span>Share</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      if (activePlatform === 'linkedin') {
+        return (
+          <div style={{ background: '#1d2226', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '16px', color: '#e9ebed', fontFamily: '-apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', textAlign: 'left' }}>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+              <img src="https://media.licdn.com/dms/image/v2/D4D0BAQHIO-OBECZQPQ/company-logo_200_200/company-logo_200_200/0/1697892174722?e=2147483647&v=beta&t=iwbyDiYKZkyx2nsJh3Q2FD3sGCXOwSyWDfmZ70xVd2g" alt="Avatar" style={{ width: '48px', height: '48px', borderRadius: '4px', background: '#fff' }} />
+              <div>
+                <h4 style={{ fontSize: '14px', fontWeight: '600', color: '#fff', margin: 0 }}>ClickTake Technologies</h4>
+                <p style={{ fontSize: '12px', color: '#8f9193', margin: 0 }}>10,240 followers</p>
+                <p style={{ fontSize: '12px', color: '#8f9193', margin: 0 }}>Just now • Edited</p>
+              </div>
+            </div>
+            <div style={{ fontSize: '14px', lineHeight: '1.6', marginBottom: '12px', whiteSpace: 'pre-wrap' }}>{textContent}</div>
+            {hasImage && (
+              <div style={{ margin: '12px -16px -16px -16px', borderTop: '1px solid #3e4042', overflow: 'hidden' }}>
+                <img src={imageUrl} alt="Post" style={{ width: '100%', display: 'block', maxHeight: '300px', objectFit: 'cover' }} />
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      if (activePlatform === 'instagram') {
+        return (
+          <div style={{ background: '#000', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', overflow: 'hidden', textAlign: 'left' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px' }}>
+              <img src="https://media.licdn.com/dms/image/v2/D4D0BAQHIO-OBECZQPQ/company-logo_200_200/company-logo_200_200/0/1697892174722?e=2147483647&v=beta&t=iwbyDiYKZkyx2nsJh3Q2FD3sGCXOwSyWDfmZ70xVd2g" alt="Avatar" style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#fff' }} />
+              <div>
+                <span style={{ fontSize: '13px', fontWeight: '700' }}>clicktake_tech</span>
+                <span style={{ fontSize: '11px', display: 'block', color: '#a8a8a8' }}>Sponsored</span>
+              </div>
+            </div>
+            {hasImage ? (
+              <img src={imageUrl} alt="Post" style={{ width: '100%', display: 'block', maxHeight: '320px', objectFit: 'cover' }} />
+            ) : (
+              <div style={{ height: '200px', background: '#262626', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8e8e8e' }}>No Media</div>
+            )}
+            <div style={{ padding: '12px' }}>
+              <div style={{ display: 'flex', gap: '16px', marginBottom: '8px', fontSize: '16px' }}>
+                <span>Like</span>
+                <span>Comment</span>
+                <span>Share</span>
+              </div>
+              <p style={{ fontSize: '13px', fontWeight: '700', marginBottom: '4px' }}>1,240 likes</p>
+              <p style={{ fontSize: '13px', lineHeight: '1.5' }}>
+                <span style={{ fontWeight: '700', marginRight: '6px' }}>clicktake_tech</span>
+                {textContent}
+              </p>
+            </div>
+          </div>
+        );
+      }
+
+      // Facebook & Default
+      return (
+        <div style={{ background: '#242526', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '16px', color: '#e4e6eb', fontFamily: 'Segoe UI, Helvetica, Arial, sans-serif', textAlign: 'left' }}>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+            <img src="https://media.licdn.com/dms/image/v2/D4D0BAQHIO-OBECZQPQ/company-logo_200_200/company-logo_200_200/0/1697892174722?e=2147483647&v=beta&t=iwbyDiYKZkyx2nsJh3Q2FD3sGCXOwSyWDfmZ70xVd2g" alt="Avatar" style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#fff' }} />
+            <div>
+              <h4 style={{ fontSize: '14px', fontWeight: '600', color: '#fff', margin: 0 }}>ClickTake Technologies</h4>
+              <p style={{ fontSize: '12px', color: '#b0b3b8', margin: 0 }}>Just now</p>
+            </div>
+          </div>
+          <div style={{ fontSize: '15px', lineHeight: '1.5', marginBottom: '12px', whiteSpace: 'pre-wrap' }}>{textContent}</div>
+          {hasImage && (
+            <div style={{ margin: '12px -16px -16px -16px', borderTop: '1px solid #3e4042' }}>
+              <img src={imageUrl} alt="Post" style={{ width: '100%', display: 'block', maxHeight: '300px', objectFit: 'cover' }} />
+            </div>
+          )}
+        </div>
+      );
+    };
+
     return (
       <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0', overflow: 'hidden', padding: '0' }}>
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div style={{ padding: '22px 24px 18px', borderBottom: '1px solid var(--border-glass)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
                 {meta.improved && (
                   <span style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid #10b981', color: '#10b981', fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '12px', letterSpacing: '0.5px' }}>
-                    ✨ AI IMPROVED
+                    AI Improved
                   </span>
                 )}
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                  #{draft.id} • {new Date(draft.created_at).toLocaleString()}
+                  ID: {draft.id} • {new Date(draft.created_at).toLocaleString()}
                 </span>
               </div>
-              <h3 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', lineHeight: '1.3', marginBottom: '0' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', lineHeight: '1.3', marginBottom: '0' }}>
                 {draft.title}
               </h3>
             </div>
@@ -615,211 +732,129 @@ export default function App() {
                 className="btn btn-secondary"
                 style={{ padding: '6px 14px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
-                👁️ Preview Post
+                Preview Post
               </button>
-              <span style={{
-                background: `${statusColor}22`,
-                border: `1px solid ${statusColor}`,
-                color: statusColor,
-                fontSize: '11px', fontWeight: '700', padding: '4px 12px', borderRadius: '20px', letterSpacing: '0.5px'
-              }}>
+              <span className={`status-pill ${draft.status.toLowerCase().replace(' ', '-')}`}>
                 {draft.status.toUpperCase()}
               </span>
             </div>
           </div>
         </div>
 
-        {/* ── Image + Caption Row ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '0' }}>
-
-          {/* Image */}
-          <div style={{ position: 'relative', borderRight: '1px solid var(--border-glass)', minHeight: '280px', background: 'rgba(0,0,0,0.25)' }}>
-            {isRegeneratingImg ? (
-              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', gap: '12px' }}>
-                <div style={{ width: '36px', height: '36px', border: '3px solid var(--border-glass)', borderTop: '3px solid var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Generating image…</span>
-              </div>
-            ) : draft.image_url ? (
-              <img
-                src={`${API_BASE}${draft.image_url}${imgTs ? '?t=' + imgTs : ''}`}
-                alt={draft.title}
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', minHeight: '280px' }}
-              />
-            ) : (
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '280px', color: 'var(--text-muted)', fontSize: '13px', flexDirection: 'column', gap: '8px' }}>
-                <span style={{ fontSize: '32px' }}>🖼️</span>
-                <span>No image generated</span>
-              </div>
-            )}
-            {/* Regen image button overlay */}
-            {user?.role === 'admin' && !isRegeneratingImg && (
-              <button
-                onClick={() => handleRegenerateImage(draft.id)}
-                title="Regenerate Image"
-                style={{
-                  position: 'absolute', bottom: '10px', right: '10px',
-                  background: 'rgba(0,0,0,0.65)', border: '1px solid rgba(255,255,255,0.2)',
-                  color: '#fff', fontSize: '11px', padding: '6px 10px', borderRadius: '6px',
-                  cursor: 'pointer', backdropFilter: 'blur(6px)', fontWeight: '600',
-                  transition: 'all 0.2s'
-                }}
-              >
-                🔄 New Image
-              </button>
-            )}
-          </div>
-
-          {/* Caption + Tags */}
-          <div style={{ display: 'flex', flexDirection: 'column', padding: '20px 24px', gap: '16px' }}>
-
-            {/* Caption */}
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase' }}>📝 Post Caption</span>
-              </div>
-              <div style={{
-                background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.12)',
-                borderRadius: '8px', padding: '14px', fontSize: '14px', lineHeight: '1.7',
-                color: 'var(--text-primary)', whiteSpace: 'pre-wrap', maxHeight: isExpanded ? 'none' : '160px',
-                overflow: 'hidden', position: 'relative'
-              }}>
-                {draft.caption}
-                {!isExpanded && draft.caption && draft.caption.length > 300 && (
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '50px', background: 'linear-gradient(transparent, rgba(18,18,28,0.95))' }} />
-                )}
-              </div>
-              {draft.caption && draft.caption.length > 300 && (
-                <button onClick={() => setExpandedDescriptions(prev => ({ ...prev, [draft.id]: !isExpanded }))}
-                  style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '12px', cursor: 'pointer', marginTop: '6px', padding: '0', fontWeight: '600' }}>
-                  {isExpanded ? '▲ Show less' : '▼ Read full caption'}
-                </button>
-              )}
-            </div>
-
-            {/* CTA Badge */}
-            {meta.cta && (
-              <div style={{
-                background: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(217,70,239,0.10))',
-                border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px',
-                padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px'
-              }}>
-                <span style={{ fontSize: '16px' }}>🎯</span>
-                <div>
-                  <span style={{ fontSize: '9px', color: 'var(--primary)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase', display: 'block' }}>Call to Action</span>
-                  <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: '600' }}>{meta.cta}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Hashtags */}
-            <div>
-              <span style={{ fontSize: '10px', color: 'var(--secondary)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>#️⃣ Hashtags</span>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {(draft.hashtags || '').split(' ').filter(Boolean).map((tag, i) => (
-                  <span key={i} style={{
-                    background: 'rgba(217,70,239,0.08)', border: '1px solid rgba(217,70,239,0.2)',
-                    color: 'var(--secondary)', fontSize: '12px', padding: '3px 10px', borderRadius: '20px',
-                    fontFamily: 'monospace', fontWeight: '600'
-                  }}>{tag}</span>
-                ))}
-              </div>
-            </div>
-
-          </div>
-        </div>
-
-        {/* ── Key Points ── */}
-        {meta.keyPoints.length > 0 && (
-          <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-glass)', background: 'rgba(255,255,255,0.01)' }}>
-            <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '10px' }}>💡 Key Talking Points</span>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px' }}>
-              {meta.keyPoints.map((pt, i) => (
-                <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-                  <span style={{ color: 'var(--accent)', fontSize: '12px', marginTop: '2px', flexShrink: 0 }}>▸</span>
-                  <span style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>{pt}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── Platform Previews ── */}
+        {/* Content Tabs for Simulation */}
         {platforms.length > 0 && (
-          <div style={{ borderTop: '1px solid var(--border-glass)' }}>
-            {/* Platform tabs */}
-            <div style={{ display: 'flex', borderBottom: '1px solid var(--border-glass)' }}>
+          <div style={{ borderBottom: '1px solid var(--border-glass)' }}>
+            <div style={{ display: 'flex' }}>
               {platforms.map(p => (
                 <button
                   key={p}
                   onClick={() => setActivePlatformTab(prev => ({ ...prev, [draft.id]: p }))}
                   style={{
-                    padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer',
+                    padding: '12px 20px', border: 'none', background: 'none', cursor: 'pointer',
                     fontSize: '12px', fontWeight: '700', letterSpacing: '0.5px',
                     color: activePlatform === p ? platformColor(p) : 'var(--text-muted)',
                     borderBottom: activePlatform === p ? `2px solid ${platformColor(p)}` : '2px solid transparent',
                     transition: 'all 0.2s'
                   }}
                 >
-                  {platformIcon(p)} {p.toUpperCase()}
+                  {p.toUpperCase()} SIMULATOR
                 </button>
               ))}
-            </div>
-            {/* Active platform content */}
-            <div style={{ padding: '16px 24px' }}>
-              <div style={{
-                background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '14px',
-                fontSize: '13px', lineHeight: '1.8', color: 'var(--text-secondary)',
-                whiteSpace: 'pre-wrap', maxHeight: '180px', overflowY: 'auto',
-                fontFamily: activePlatform === 'twitter' ? 'monospace' : 'inherit'
-              }}>
-                {meta.platformPreviews[activePlatform] || 'No preview available.'}
-              </div>
             </div>
           </div>
         )}
 
-        {/* ── AI Improvement Panel (Admin only) ── */}
-        {user?.role === 'admin' && draft.status === 'Under Review' && (
-          <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-glass)', background: 'rgba(99,102,241,0.03)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-              <span style={{ fontSize: '14px' }}>🤖</span>
-              <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase' }}>AI Improvement Directive</span>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>— type your opinion and AI will instantly regenerate</span>
+        {/* Live Simulator View */}
+        <div style={{ padding: '24px', background: 'rgba(0,0,0,0.1)', display: 'grid', gridTemplateColumns: '1fr', gap: '20px' }}>
+          <div style={{ maxWidth: '640px', margin: '0 auto', width: '100%' }}>
+            {renderSocialPreview()}
+          </div>
+        </div>
+
+        {/* Metadata Details (CTA, Talking Points) */}
+        <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {meta.cta && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(88,80,236,0.1), rgba(217,70,239,0.05))',
+              border: '1px solid rgba(88,80,236,0.2)', borderRadius: '10px',
+              padding: '12px 16px'
+            }}>
+              <span style={{ fontSize: '9px', color: 'var(--primary)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase', display: 'block' }}>Call to Action</span>
+              <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: '600' }}>{meta.cta}</span>
             </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
+          )}
+
+          {meta.keyPoints.length > 0 && (
+            <div>
+              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>Key Talking Points</span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+                {meta.keyPoints.map((pt, i) => (
+                  <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--primary)' }} />
+                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{pt}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {draft.hashtags && (
+            <div>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>Optimized Hashtags</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {draft.hashtags.split(' ').filter(Boolean).map((tag, i) => (
+                  <span key={i} style={{
+                    background: 'rgba(217,70,239,0.06)', border: '1px solid rgba(217,70,239,0.15)',
+                    color: 'var(--secondary)', fontSize: '11px', padding: '4px 10px', borderRadius: '20px',
+                    fontFamily: 'monospace', fontWeight: '600'
+                  }}>{tag}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* AI Improvement Panel (Admin only) */}
+        {user?.role === 'admin' && draft.status === 'Under Review' && (
+          <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border-glass)', background: 'rgba(88,80,236,0.02)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+              <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase' }}>AI Improvement Directive</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>— type adjustments and AI will regenerate copy and assets</span>
+            </div>
+            <div style={{ display: 'flex', gap: '14px' }}>
               <textarea
                 value={improveTxt}
                 onChange={e => setImprovementTexts(prev => ({ ...prev, [draft.id]: e.target.value }))}
-                placeholder="e.g. 'Make the caption more urgent and emphasize the deadline. Add more emojis and make it exciting for a younger audience.'"
+                placeholder="e.g. Make the caption more urgent and emphasize the deadline."
                 rows={2}
-                style={{ flex: 1, padding: '10px 14px', fontSize: '13px', resize: 'vertical', lineHeight: '1.5', borderRadius: '8px', minHeight: '60px' }}
+                style={{ flex: 1, padding: '12px 16px', fontSize: '13px', resize: 'vertical', lineHeight: '1.5', borderRadius: '8px', minHeight: '60px' }}
               />
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
                 <button
                   onClick={() => handleImprove(draft.id)}
                   disabled={!improveTxt.trim() || isImproving}
-                  className="btn"
+                  className="btn btn-secondary"
                   style={{ padding: '10px 18px', fontSize: '13px', whiteSpace: 'nowrap', minWidth: '160px' }}
                 >
-                  {isImproving ? '🔄 Improving...' : '✨ Apply Improvement'}
+                  {isImproving ? 'Improving...' : 'Apply Improvement'}
                 </button>
                 <button
                   onClick={() => handleApprove(draft.id)}
                   className="btn"
-                  style={{ padding: '10px 18px', fontSize: '13px', background: 'linear-gradient(135deg, #10b981, #059669)', whiteSpace: 'nowrap' }}
+                  style={{ padding: '10px 18px', fontSize: '13px', background: 'var(--success)', whiteSpace: 'nowrap', boxShadow: '0 4px 15px var(--success-glow)' }}
                 >
-                  🚀 Approve & Publish
+                  Approve and Publish
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* ── Action bar for other states ── */}
+        {/* Action bar for other states */}
         {user?.role === 'admin' && draft.status === 'Publish Failed' && (
           <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'flex-end' }}>
             <button className="btn btn-outline" onClick={() => handleApprove(draft.id)} style={{ padding: '8px 16px', fontSize: '13px' }}>
-              🔄 Retry Publishing
+              Retry Publishing
             </button>
           </div>
         )}
@@ -836,7 +871,7 @@ export default function App() {
       {/* Header */}
       <header className="app-header">
         <div className="brand">
-          <span style={{ fontSize: '24px' }}>⚡</span>
+          <img src="https://media.licdn.com/dms/image/v2/D4D0BAQHIO-OBECZQPQ/company-logo_200_200/company-logo_200_200/0/1697892174722?e=2147483647&v=beta&t=iwbyDiYKZkyx2nsJh3Q2FD3sGCXOwSyWDfmZ70xVd2g" alt="Logo" style={{ width: '40px', height: '40px', objectFit: 'contain', background: '#fff', borderRadius: '6px', padding: '4px' }} />
           <span>ClickTake Content Engine</span>
         </div>
         <nav className="nav-links">
