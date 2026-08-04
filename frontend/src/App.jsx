@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   FaLinkedinIn, FaInstagram, FaXTwitter, FaFacebook, FaPinterest,
-  FaTiktok, FaYoutube, FaTelegram, FaWordpress, FaReddit, FaGoogle
+  FaTiktok, FaYoutube, FaTelegram, FaWordpress, FaReddit, FaGoogle, FaThreads
 } from 'react-icons/fa6';
 import { FaTwitter, FaXing } from 'react-icons/fa';
 
@@ -48,7 +48,7 @@ function parseDraftMeta(description) {
 
 const ALL_PLATFORMS = [
   'linkedin', 'instagram', 'twitter', 'x', 'facebook', 'pinterest', 
-  'google business', 'tiktok', 'youtube', 'telegram', 'xing', 'wordpress', 'reddit'
+  'google business', 'tiktok', 'youtube', 'telegram', 'threads', 'xing', 'wordpress', 'reddit'
 ];
 
 export default function App() {
@@ -508,6 +508,7 @@ export default function App() {
     xing:             { Icon: FaXing,        color: '#006567' },
     wordpress:        { Icon: FaWordpress,   color: '#21759B' },
     reddit:           { Icon: FaReddit,      color: '#FF4500' },
+    threads:          { Icon: FaThreads,     color: '#101010' },
   };
 
   const platformIcon = (p, size = 16) => {

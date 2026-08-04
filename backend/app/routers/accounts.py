@@ -31,7 +31,7 @@ def link_account(
     allowed_platforms = [
         "instagram", "x", "facebook", "pinterest", "twitter", "linkedin", 
         "google business", "google_business", "tiktok", "youtube", 
-        "telegram", "xing", "wordpress", "reddit"
+        "telegram", "threads", "xing", "wordpress", "reddit"
     ]
     if platform not in allowed_platforms:
         raise HTTPException(status_code=400, detail="Unsupported platform")
