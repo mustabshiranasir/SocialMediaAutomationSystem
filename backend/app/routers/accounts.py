@@ -28,7 +28,12 @@ def link_account(
     POST /accounts/link: Link a new social media account.
     """
     platform = platform.lower()
-    if platform not in ["instagram", "linkedin", "twitter", "x", "facebook"]:
+    allowed_platforms = [
+        "instagram", "x", "facebook", "pinterest", "twitter", "linkedin", 
+        "google business", "google_business", "tiktok", "youtube", 
+        "telegram", "xing", "wordpress", "reddit"
+    ]
+    if platform not in allowed_platforms:
         raise HTTPException(status_code=400, detail="Unsupported platform")
         
     # Check if already linked

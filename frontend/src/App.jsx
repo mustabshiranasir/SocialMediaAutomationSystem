@@ -1,4 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
+import {
+  FaLinkedinIn, FaInstagram, FaXTwitter, FaFacebook, FaPinterest,
+  FaTiktok, FaYoutube, FaTelegram, FaWordpress, FaReddit, FaGoogle
+} from 'react-icons/fa6';
+import { FaTwitter, FaXing } from 'react-icons/fa';
 
 const API_BASE = 'http://localhost:8000';
 
@@ -40,6 +45,11 @@ function parseDraftMeta(description) {
 
   return { body, keyPoints, cta, audience, platformPreviews, improved };
 }
+
+const ALL_PLATFORMS = [
+  'linkedin', 'instagram', 'twitter', 'x', 'facebook', 'pinterest', 
+  'google business', 'tiktok', 'youtube', 'telegram', 'xing', 'wordpress', 'reddit'
+];
 
 export default function App() {
   // Authentication State
@@ -483,91 +493,162 @@ export default function App() {
   const isPlatformConnected = (platform) => accounts.some(acc => acc.platform.toLowerCase() === platform.toLowerCase());
 
   // ── Platform icon helper ─────────────────────────────────────────────────
-  const platformIcon = (p) => ({ linkedin: '💼', instagram: '📸', twitter: '🐦', facebook: '📘' }[p] || '📡');
-  const platformColor = (p) => ({ linkedin: '#0A66C2', instagram: '#E1306C', twitter: '#1DA1F2', facebook: '#1877F2' }[p] || '#6366f1');
+  const PLATFORM_ICONS = {
+    linkedin:         { Icon: FaLinkedinIn,  color: '#0A66C2' },
+    instagram:        { Icon: FaInstagram,   color: '#E1306C' },
+    twitter:          { Icon: FaTwitter,     color: '#1DA1F2' },
+    x:                { Icon: FaXTwitter,    color: '#000000' },
+    facebook:         { Icon: FaFacebook,    color: '#1877F2' },
+    pinterest:        { Icon: FaPinterest,   color: '#BD081C' },
+    'google business':{ Icon: FaGoogle,      color: '#4285F4' },
+    google_business:  { Icon: FaGoogle,      color: '#4285F4' },
+    tiktok:           { Icon: FaTiktok,      color: '#00f2fe' },
+    youtube:          { Icon: FaYoutube,     color: '#FF0000' },
+    telegram:         { Icon: FaTelegram,    color: '#229ED9' },
+    xing:             { Icon: FaXing,        color: '#006567' },
+    wordpress:        { Icon: FaWordpress,   color: '#21759B' },
+    reddit:           { Icon: FaReddit,      color: '#FF4500' },
+  };
+
+  const platformIcon = (p, size = 16) => {
+    const key = (p || '').toLowerCase();
+    const entry = PLATFORM_ICONS[key];
+    if (!entry) return <span style={{ fontSize: size * 0.75, fontWeight: 800 }}>{p.slice(0,2).toUpperCase()}</span>;
+    const { Icon, color } = entry;
+    return <Icon size={size} style={{ color, flexShrink: 0 }} />;
+  };
+
+  const platformColor = (p) => (PLATFORM_ICONS[(p || '').toLowerCase()]?.color || 'var(--primary)');
 
   // ── Login Screen ─────────────────────────────────────────────────────────
   if (!token) {
     return (
       <>
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: '20px' }}>
-        <div className="glass-panel" style={{ width: '100%', maxWidth: '480px', padding: '40px' }}>
-          <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-            <img src="https://media.licdn.com/dms/image/v2/D4D0BAQHIO-OBECZQPQ/company-logo_200_200/company-logo_200_200/0/1697892174722?e=2147483647&v=beta&t=iwbyDiYKZkyx2nsJh3Q2FD3sGCXOwSyWDfmZ70xVd2g" alt="ClickTake Technologies" style={{ width: '140px', height: '140px', objectFit: 'contain', marginBottom: '16px', borderRadius: '12px', background: '#fff', padding: '10px' }} />
-            <h1 style={{ fontSize: '24px', fontWeight: '800', marginBottom: '8px', color: 'var(--text-primary)' }}>
-              Welcome to ClickTake
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '15px' }}>AI-Powered Social Media Content Engine</p>
-          </div>
-          {errorMsg && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--accent-error)', color: '#fca5a5', padding: '12px', borderRadius: '8px', fontSize: '14px', marginBottom: '20px' }}>{errorMsg}</div>}
-          <form onSubmit={handleAuth}>
-            {isRegister && (
-              <div className="form-group">
-                <label>Name</label>
-                <input type="text" value={authName} onChange={e => setAuthName(e.target.value)} required placeholder="Your Name" />
+      <style>{`
+        @keyframes loginFadeIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+        .login-wrapper { display: flex; min-height: 100vh; }
+        .login-left { flex: 1; background: radial-gradient(ellipse at 20% 50%, rgba(88,80,236,0.18) 0%, transparent 55%), radial-gradient(ellipse at 80% 80%, rgba(217,70,239,0.1) 0%, transparent 55%); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px; border-right: 1px solid var(--border-glass); }
+        .login-right { width: 480px; min-width: 480px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 50px; background: rgba(10,11,22,0.6); }
+        .login-card { width: 100%; animation: loginFadeIn 0.5s cubic-bezier(0.16,1,0.3,1); }
+        .login-input { width: 100%; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 14px 18px; color: var(--text-primary); font-family: var(--font-family); font-size: 15px; outline: none; transition: all 0.2s; box-sizing: border-box; }
+        .login-input:focus { border-color: var(--primary); background: rgba(88,80,236,0.06); box-shadow: 0 0 0 4px rgba(88,80,236,0.12); }
+        .login-input::placeholder { color: var(--text-muted); }
+        .login-divider { height: 1px; background: var(--border-glass); margin: 28px 0; }
+        @media (max-width: 900px) { .login-left { display: none; } .login-right { width: 100%; min-width: 0; padding: 40px 24px; } }
+      `}</style>
+      <div className="login-wrapper">
+        {/* Left branding panel */}
+        <div className="login-left">
+          <img src="https://media.licdn.com/dms/image/v2/D4D0BAQHIO-OBECZQPQ/company-logo_200_200/company-logo_200_200/0/1697892174722?e=2147483647&v=beta&t=iwbyDiYKZkyx2nsJh3Q2FD3sGCXOwSyWDfmZ70xVd2g" alt="ClickTake Technologies" style={{ width: '90px', height: '90px', objectFit: 'contain', borderRadius: '20px', background: '#fff', padding: '8px', marginBottom: '36px', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }} />
+          <h1 style={{ fontSize: '42px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-1.5px', marginBottom: '16px', lineHeight: '1.1' }}>AI Social<br/>Media Engine</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '16px', maxWidth: '340px', lineHeight: '1.7', marginBottom: '48px' }}>Generate, review, and publish high-performance social campaigns powered by Groq and Gemini AI.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', width: '100%', maxWidth: '340px' }}>
+            {[
+              { label: 'Multi-Platform Content Generation', desc: 'LinkedIn, Twitter, Instagram, Facebook' },
+              { label: 'Live Social Post Simulator', desc: 'See exactly how posts will look per platform' },
+              { label: 'Campaign Analytics Dashboard', desc: 'Track reach, engagement and click-through rates' }
+            ].map((f, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '14px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)', borderRadius: '12px', padding: '14px 18px' }}>
+                <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--primary)', flexShrink: 0, boxShadow: '0 0 8px var(--primary-glow)' }} />
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>{f.label}</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>{f.desc}</div>
+                </div>
               </div>
-            )}
-            <div className="form-group">
-              <label>Email Address</label>
-              <input type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} required placeholder="e.g. admin@social.com" />
-            </div>
-            <div className="form-group">
-              <label>Password</label>
-              <input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} required placeholder="••••••••" />
-            </div>
-            <button type="submit" className="btn" style={{ width: '100%', marginTop: '10px' }} disabled={loading}>
-              {loading ? 'Authenticating...' : isRegister ? 'Create Account' : 'Sign In'}
-            </button>
-          </form>
-          <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '14px' }}>
-            <span style={{ color: 'var(--text-secondary)' }}>{isRegister ? 'Already have an account? ' : "Don't have an account? "}</span>
-            <button className="nav-btn" style={{ padding: '0', color: 'var(--primary)', fontWeight: '600' }} onClick={() => setIsRegister(!isRegister)}>
-              {isRegister ? 'Sign In' : 'Create One'}
-            </button>
+            ))}
           </div>
-          {!isRegister && (
-            <div style={{ marginTop: '10px', textAlign: 'center' }}>
-              <button className="nav-btn" style={{ padding: '0', color: 'var(--text-muted)', fontSize: '13px' }} onClick={() => setShowResetModal(true)}>
-                🔒 Forgot your password?
+        </div>
+
+        {/* Right login panel */}
+        <div className="login-right">
+          <div className="login-card">
+            <div style={{ marginBottom: '36px' }}>
+              <div style={{ fontSize: '10px', fontWeight: '800', color: 'var(--primary)', letterSpacing: '2.5px', textTransform: 'uppercase', marginBottom: '10px' }}>ClickTake Technologies</div>
+              <h2 style={{ fontSize: '30px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.5px', marginBottom: '8px' }}>{isRegister ? 'Create account' : 'Welcome back'}</h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: '15px' }}>{isRegister ? 'Start managing social media with AI.' : 'Sign in to your content engine.'}</p>
+            </div>
+
+            {errorMsg && (
+              <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#fca5a5', padding: '14px 18px', borderRadius: '12px', fontSize: '14px', marginBottom: '24px' }}>{errorMsg}</div>
+            )}
+
+            <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              {isRegister && (
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>Full Name</label>
+                  <input className="login-input" type="text" value={authName} onChange={e => setAuthName(e.target.value)} required placeholder="Your full name" />
+                </div>
+              )}
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>Email Address</label>
+                <input className="login-input" type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} required placeholder="you@company.com" />
+              </div>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', letterSpacing: '1px', textTransform: 'uppercase' }}>Password</label>
+                  {!isRegister && (
+                    <button type="button" onClick={() => setShowResetModal(true)} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '12px', fontWeight: '600', cursor: 'pointer', fontFamily: 'var(--font-family)' }}>Forgot password?</button>
+                  )}
+                </div>
+                <input className="login-input" type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} required placeholder="Min. 6 characters" />
+              </div>
+              <button type="submit" className="btn" style={{ width: '100%', padding: '16px', fontSize: '15px', marginTop: '4px' }} disabled={loading}>
+                {loading ? 'Authenticating...' : isRegister ? 'Create Account' : 'Sign In'}
+              </button>
+            </form>
+
+            <div style={{ textAlign: 'center', marginTop: '22px', fontSize: '14px' }}>
+              <span style={{ color: 'var(--text-muted)' }}>{isRegister ? 'Already have an account? ' : "Don't have an account? "}</span>
+              <button style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: '700', cursor: 'pointer', fontSize: '14px', fontFamily: 'var(--font-family)' }} onClick={() => { setIsRegister(!isRegister); setErrorMsg(''); }}>
+                {isRegister ? 'Sign In' : 'Sign Up Free'}
               </button>
             </div>
-          )}
-          <div style={{ marginTop: '30px', borderTop: '1px solid var(--border-glass)', paddingTop: '20px' }}>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '10px' }}>QUICK LOGIN DEMO CREDENTIALS</p>
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-              <button onClick={() => quickFill('admin')} className="btn btn-secondary" style={{ fontSize: '12px', padding: '6px 12px' }}>Admin Dashboard</button>
-              <button onClick={() => quickFill('requester')} className="btn btn-secondary" style={{ fontSize: '12px', padding: '6px 12px' }}>Content Requester</button>
+
+            <div className="login-divider" />
+
+            <div>
+              <p style={{ fontSize: '10px', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '14px', letterSpacing: '1.5px', textTransform: 'uppercase' }}>Demo Quick Access</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <button onClick={() => quickFill('admin')} className="btn btn-secondary" style={{ padding: '14px 12px', fontSize: '13px', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontWeight: '700' }}>Admin</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '400' }}>Full access</span>
+                </button>
+                <button onClick={() => quickFill('requester')} className="btn btn-secondary" style={{ padding: '14px 12px', fontSize: '13px', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontWeight: '700' }}>Requester</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '400' }}>Content role</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
-      {/* Reset Password modal available on login screen too */}
+
       {showResetModal && (
         <div className="modal-overlay" onClick={e => { if (e.target.className === 'modal-overlay') setShowResetModal(false); }}>
-          <div className="modal-content" style={{ maxWidth: '480px' }}>
+          <div className="modal-content" style={{ maxWidth: '460px' }}>
             <div className="modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '20px' }}>🔒</span>
+              <div>
                 <h2 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>Reset Password</h2>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>Enter your email and a new password.</p>
               </div>
-              <button onClick={() => setShowResetModal(false)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#fff', fontSize: '18px', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+              <button onClick={() => setShowResetModal(false)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', flexShrink: 0 }}>x</button>
             </div>
             <form onSubmit={handlePasswordReset}>
               <div className="modal-body" style={{ gap: '16px' }}>
                 <div className="form-group">
-                  <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--primary)' }}>Registered Email Address</label>
-                  <input type="email" className="modal-input" value={resetEmail} onChange={e => setResetEmail(e.target.value)} placeholder="user@example.com" required />
+                  <label>Registered Email</label>
+                  <input type="email" value={resetEmail} onChange={e => setResetEmail(e.target.value)} placeholder="user@example.com" required />
                 </div>
                 <div className="form-group">
-                  <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--primary)' }}>New Password</label>
-                  <input type="password" className="modal-input" value={resetNewPassword} onChange={e => setResetNewPassword(e.target.value)} placeholder="Enter new password" required minLength={6} />
+                  <label>New Password</label>
+                  <input type="password" value={resetNewPassword} onChange={e => setResetNewPassword(e.target.value)} placeholder="Enter new password" required minLength={6} />
                 </div>
-                {errorMsg && <div style={{ color: '#fca5a5', fontSize: '13px' }}>{errorMsg}</div>}
-                {successMsg && <div style={{ color: '#a7f3d0', fontSize: '13px' }}>{successMsg}</div>}
+                {errorMsg && <div style={{ color: '#fca5a5', fontSize: '13px', padding: '10px 14px', background: 'rgba(239,68,68,0.08)', borderRadius: '8px' }}>{errorMsg}</div>}
+                {successMsg && <div style={{ color: '#a7f3d0', fontSize: '13px', padding: '10px 14px', background: 'rgba(16,185,129,0.08)', borderRadius: '8px' }}>{successMsg}</div>}
               </div>
               <div className="modal-footer">
-                <button type="button" onClick={() => setShowResetModal(false)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '13px' }}>Cancel</button>
-                <button type="submit" className="btn" disabled={loading} style={{ padding: '8px 20px', fontSize: '13px' }}>{loading ? '🔄 Resetting...' : '🔒 Reset Password'}</button>
+                <button type="button" onClick={() => setShowResetModal(false)} className="btn btn-secondary" style={{ padding: '10px 20px', fontSize: '13px' }}>Cancel</button>
+                <button type="submit" className="btn" disabled={loading} style={{ padding: '10px 22px', fontSize: '13px' }}>{loading ? 'Resetting...' : 'Reset Password'}</button>
               </div>
             </form>
           </div>
@@ -757,7 +838,10 @@ export default function App() {
                     transition: 'all 0.2s'
                   }}
                 >
-                  {p.toUpperCase()} SIMULATOR
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    {platformIcon(p, 14)}
+                    {p.toUpperCase()}
+                  </span>
                 </button>
               ))}
             </div>
@@ -871,36 +955,38 @@ export default function App() {
       {/* Header */}
       <header className="app-header">
         <div className="brand">
-          <img src="https://media.licdn.com/dms/image/v2/D4D0BAQHIO-OBECZQPQ/company-logo_200_200/company-logo_200_200/0/1697892174722?e=2147483647&v=beta&t=iwbyDiYKZkyx2nsJh3Q2FD3sGCXOwSyWDfmZ70xVd2g" alt="Logo" style={{ width: '40px', height: '40px', objectFit: 'contain', background: '#fff', borderRadius: '6px', padding: '4px' }} />
+          <img src="https://media.licdn.com/dms/image/v2/D4D0BAQHIO-OBECZQPQ/company-logo_200_200/company-logo_200_200/0/1697892174722?e=2147483647&v=beta&t=iwbyDiYKZkyx2nsJh3Q2FD3sGCXOwSyWDfmZ70xVd2g" alt="Logo" style={{ width: '36px', height: '36px', objectFit: 'contain', background: '#fff', borderRadius: '8px', padding: '3px' }} />
           <span>ClickTake Content Engine</span>
         </div>
         <nav className="nav-links">
-          <button className={`nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>🏠 Dashboard</button>
-          <button className={`nav-btn ${activeTab === 'campaigns' ? 'active' : ''}`} onClick={() => { setActiveTab('campaigns'); fetchCampaigns(); }}>🎯 Campaigns</button>
-          <button className={`nav-btn ${activeTab === 'analytics' ? 'active' : ''}`} onClick={() => { setActiveTab('analytics'); fetchAnalytics(); }}>📊 Analytics</button>
-          <button className={`nav-btn ${activeTab === 'devops' ? 'active' : ''}`} onClick={() => { setActiveTab('devops'); fetchSystemDiagnostics(); }}>🛠️ Skills & System</button>
+          <button className={`nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>Dashboard</button>
+          <button className={`nav-btn ${activeTab === 'campaigns' ? 'active' : ''}`} onClick={() => { setActiveTab('campaigns'); fetchCampaigns(); }}>Campaigns</button>
+          <button className={`nav-btn ${activeTab === 'analytics' ? 'active' : ''}`} onClick={() => { setActiveTab('analytics'); fetchAnalytics(); }}>Analytics</button>
+          <button className={`nav-btn ${activeTab === 'devops' ? 'active' : ''}`} onClick={() => { setActiveTab('devops'); fetchSystemDiagnostics(); }}>System</button>
         </nav>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <div style={{ textAlign: 'right' }}>
-            <p style={{ fontSize: '14px', fontWeight: '600' }}>{user?.name}</p>
+            <p style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>{user?.name}</p>
             <span className={`status-pill ${user?.role === 'admin' ? 'approved' : 'draft'}`} style={{ fontSize: '10px', padding: '2px 8px' }}>{user?.role?.toUpperCase()}</span>
           </div>
-          <button className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '13px' }} onClick={handleLogout}>Log Out</button>
+          <button className="btn btn-secondary" style={{ padding: '8px 18px', fontSize: '13px' }} onClick={handleLogout}>Sign Out</button>
         </div>
       </header>
 
       {/* Messages */}
       <div style={{ padding: '0 40px', maxWidth: '1600px', width: '100%', margin: '20px auto 0' }}>
         {successMsg && (
-          <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid var(--accent)', color: '#a7f3d0', padding: '12px 16px', borderRadius: '8px', fontSize: '14px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', color: '#6ee7b7', padding: '14px 18px', borderRadius: '12px', fontSize: '14px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: '500' }}>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--success)', flexShrink: 0 }} />
             {successMsg}
-            <button onClick={() => setSuccessMsg('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#a7f3d0', cursor: 'pointer', fontSize: '16px' }}>×</button>
+            <button onClick={() => setSuccessMsg('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#6ee7b7', cursor: 'pointer', fontSize: '16px', opacity: 0.7 }}>x</button>
           </div>
         )}
         {errorMsg && (
-          <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--accent-error)', color: '#fca5a5', padding: '12px 16px', borderRadius: '8px', fontSize: '14px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5', padding: '14px 18px', borderRadius: '12px', fontSize: '14px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: '500' }}>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--danger)', flexShrink: 0 }} />
             {errorMsg}
-            <button onClick={() => setErrorMsg('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: '16px' }}>×</button>
+            <button onClick={() => setErrorMsg('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: '16px', opacity: 0.7 }}>x</button>
           </div>
         )}
       </div>
@@ -914,7 +1000,10 @@ export default function App() {
 
             {/* Prompt Form */}
             <div className="glass-panel">
-              <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px' }}>1. Draft AI Campaign Content</h2>
+              <div style={{ marginBottom: '22px' }}>
+                <div style={{ fontSize: '10px', fontWeight: '800', color: 'var(--primary)', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '6px' }}>Step 1</div>
+                <h2 style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)' }}>Generate AI Campaign</h2>
+              </div>
               <form onSubmit={handlePromptSubmit}>
                 <div className="form-group">
                   <label htmlFor="promptInput">Campaign Topic or Concept</label>
@@ -924,15 +1013,15 @@ export default function App() {
                     onChange={e => setPromptText(e.target.value)}
                     rows={3}
                     required
-                    placeholder="e.g. Announcing our summer developer hackathon with a $5k cash prize, starting August 1st!"
+                    placeholder="Describe your campaign idea, product launch, or announcement..."
                   />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
                   <div className="form-group">
-                    <label>Target Channels</label>
-                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '8px' }}>
-                      {['linkedin', 'instagram', 'twitter', 'facebook'].map(plat => (
-                        <label key={plat} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                    <label>Target Platforms</label>
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '8px' }}>
+                      {ALL_PLATFORMS.map(plat => (
+                        <label key={plat} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: selectedPlatforms.includes(plat) ? platformColor(plat) : 'var(--text-secondary)', fontSize: '13px', fontWeight: '600', background: selectedPlatforms.includes(plat) ? `${platformColor(plat)}18` : 'transparent', border: `1px solid ${selectedPlatforms.includes(plat) ? platformColor(plat) + '40' : 'var(--border-glass)'}`, borderRadius: '8px', padding: '6px 12px', transition: 'all 0.2s' }}>
                           <input
                             type="checkbox"
                             checked={selectedPlatforms.includes(plat)}
@@ -940,109 +1029,76 @@ export default function App() {
                               if (e.target.checked) setSelectedPlatforms([...selectedPlatforms, plat]);
                               else setSelectedPlatforms(selectedPlatforms.filter(p => p !== plat));
                             }}
-                            style={{ accentColor: 'var(--primary)', width: '16px', height: '16px' }}
+                            style={{ accentColor: platformColor(plat), width: '14px', height: '14px' }}
                           />
-                          {platformIcon(plat)} {plat.toUpperCase()}
+                          {platformIcon(plat, 13)}
+                          {plat.charAt(0).toUpperCase() + plat.slice(1)}
                         </label>
                       ))}
                     </div>
                   </div>
                   <div className="form-group">
-                    <label htmlFor="toneSelect" style={{ fontWeight: '600', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      🎨 Brand Writing Tone
-                    </label>
-                    <select
-                      id="toneSelect"
-                      value={tone}
-                      onChange={e => setTone(e.target.value)}
-                      style={{
-                        backgroundColor: '#1e1e38',
-                        color: '#f8fafc',
-                        fontWeight: '600',
-                        border: '1px solid rgba(99,102,241,0.3)',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
-                      }}
-                    >
-                      <option value="Professional">💼 Professional / Corporate</option>
-                      <option value="Bold">⚡ Bold / Energetic</option>
-                      <option value="Friendly">👋 Friendly / Social</option>
-                      <option value="Witty/Creative">😎 Witty / Playful</option>
+                    <label htmlFor="toneSelect">Brand Writing Tone</label>
+                    <select id="toneSelect" value={tone} onChange={e => setTone(e.target.value)}>
+                      <option value="Professional">Professional / Corporate</option>
+                      <option value="Bold">Bold / Energetic</option>
+                      <option value="Friendly">Friendly / Social</option>
+                      <option value="Witty/Creative">Witty / Playful</option>
                     </select>
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '24px' }}>
                   <div className="form-group">
-                    <label style={{ fontWeight: '600', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      🎯 Link to Campaign <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '400' }}>(optional)</span>
-                    </label>
-                    <select
-                      value={selectedCampaignId}
-                      onChange={e => setSelectedCampaignId(e.target.value)}
-                      style={{
-                        backgroundColor: '#1e1e38',
-                        color: '#f8fafc',
-                        border: '1px solid var(--border-glass-bright)'
-                      }}
-                    >
-                      <option value="">— No Campaign —</option>
+                    <label>Link to Campaign <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '400', textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
+                    <select value={selectedCampaignId} onChange={e => setSelectedCampaignId(e.target.value)}>
+                      <option value="">No Campaign</option>
                       {campaigns.map(c => (
-                        <option key={c.id} value={c.id}>🎯 {c.name}</option>
+                        <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
                     </select>
                   </div>
                   <div className="form-group">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <label style={{ fontWeight: '600', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        📅 Schedule Publish Date & Time <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '400' }}>(optional)</span>
-                      </label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <label style={{ margin: 0 }}>Schedule Publish Time <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '400', textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
                       {scheduledDateTime && (
-                        <button
-                          type="button"
-                          onClick={() => setScheduledDateTime('')}
-                          style={{ background: 'none', border: 'none', color: 'var(--accent-error)', fontSize: '11px', cursor: 'pointer', fontWeight: '600' }}
-                        >
-                          Clear Schedule
-                        </button>
+                        <button type="button" onClick={() => setScheduledDateTime('')} style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '11px', cursor: 'pointer', fontWeight: '600', fontFamily: 'var(--font-family)' }}>Clear</button>
                       )}
                     </div>
-                    <div style={{ position: 'relative' }}>
-                      <input
-                        type="datetime-local"
-                        value={scheduledDateTime}
-                        onChange={e => setScheduledDateTime(e.target.value)}
-                        style={{
-                          backgroundColor: '#1e1e38',
-                          color: '#f8fafc',
-                          fontWeight: '600',
-                          border: scheduledDateTime ? '1px solid var(--accent)' : '1px solid var(--border-glass-bright)',
-                          boxShadow: scheduledDateTime ? '0 0 12px rgba(16,185,129,0.2)' : 'none'
-                        }}
-                      />
-                    </div>
+                    <input
+                      type="datetime-local"
+                      value={scheduledDateTime}
+                      onChange={e => setScheduledDateTime(e.target.value)}
+                      style={{ border: scheduledDateTime ? '1px solid var(--success)' : undefined }}
+                    />
                   </div>
                 </div>
-                <button type="submit" className="btn" disabled={loading || selectedPlatforms.length === 0} style={{ minWidth: '220px' }}>
-                  {loading ? '🤖 Orchestrating AI Skills...' : '✨ Assemble AI Campaign'}
+                <button type="submit" className="btn" disabled={loading || selectedPlatforms.length === 0} style={{ minWidth: '220px', padding: '15px 32px', fontSize: '15px' }}>
+                  {loading ? 'Generating Campaign...' : 'Generate AI Campaign'}
                 </button>
               </form>
             </div>
 
             {/* Review Queue */}
             <div>
-              <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>2. Campaign Review Queue
-                  <span style={{ marginLeft: '10px', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', color: 'var(--primary)', fontSize: '12px', padding: '2px 10px', borderRadius: '20px', fontWeight: '700' }}>
-                    {drafts.length} drafts
-                  </span>
-                </span>
-                <button onClick={fetchDrafts} className="btn btn-secondary" style={{ padding: '6px 14px', fontSize: '12px' }}>↻ Refresh Queue</button>
-              </h2>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                <div>
+                  <div style={{ fontSize: '10px', fontWeight: '800', color: 'var(--primary)', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '6px' }}>Step 2</div>
+                  <h2 style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    Review Queue
+                    <span style={{ background: 'rgba(88,80,236,0.12)', border: '1px solid rgba(88,80,236,0.25)', color: 'var(--primary)', fontSize: '12px', padding: '3px 12px', borderRadius: '20px', fontWeight: '700' }}>
+                      {drafts.length} drafts
+                    </span>
+                  </h2>
+                </div>
+                <button onClick={fetchDrafts} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '12px' }}>Refresh</button>
+              </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                 {drafts.length === 0 ? (
-                  <div className="glass-panel" style={{ textAlign: 'center', padding: '50px', color: 'var(--text-muted)' }}>
-                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>📭</div>
-                    <p>No drafts in queue. Submit a prompt to generate your first AI campaign!</p>
+                  <div className="glass-panel" style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
+                    <div style={{ width: '56px', height: '56px', borderRadius: '16px', background: 'rgba(88,80,236,0.1)', border: '1px solid rgba(88,80,236,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: '20px', color: 'var(--primary)' }}>0</div>
+                    <p style={{ fontWeight: '600', marginBottom: '6px', color: 'var(--text-secondary)' }}>No drafts in queue</p>
+                    <p style={{ fontSize: '13px' }}>Submit a prompt above to generate your first AI campaign.</p>
                   </div>
                 ) : (
                   drafts.map(draft => <DraftCard key={draft.id} draft={draft} />)
@@ -1058,13 +1114,13 @@ export default function App() {
             <div className="glass-panel">
               <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px' }}>Account Connections</h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {['linkedin', 'instagram', 'twitter', 'facebook'].map(plat => {
-                  const linkedObj = accounts.find(acc => acc.platform === plat);
+                {ALL_PLATFORMS.map(plat => {
+                  const linkedObj = accounts.find(acc => acc.platform.toLowerCase() === plat.toLowerCase());
                   const isConnected = !!linkedObj;
                   return (
                     <div key={plat} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-glass)', background: isConnected ? 'rgba(16,185,129,0.04)' : 'transparent' }}>
                       <span style={{ fontWeight: '600', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '16px' }}>{platformIcon(plat)}</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '26px', height: '26px', borderRadius: '6px', background: `${platformColor(plat)}18` }}>{platformIcon(plat, 15)}</span>
                         {plat.charAt(0).toUpperCase() + plat.slice(1)}
                       </span>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -1085,15 +1141,15 @@ export default function App() {
 
             {/* Orchestration logs */}
             <div className="glass-panel" style={{ maxHeight: '440px', display: 'flex', flexDirection: 'column' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px' }}>Orchestration Logs</h2>
+              <div style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-secondary)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '16px' }}>Activity Log</div>
               <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {notifications.length === 0 ? (
-                  <p style={{ color: 'var(--text-muted)', fontSize: '14px', textAlign: 'center' }}>No log notifications yet.</p>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', padding: '20px' }}>No activity yet.</p>
                 ) : (
                   notifications.map(n => (
-                    <div key={n.id} style={{ fontSize: '12px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'rgba(255,255,255,0.01)' }}>
-                      <p style={{ color: 'var(--text-primary)', marginBottom: '2px' }}>{n.message}</p>
-                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{new Date(n.timestamp).toLocaleTimeString()}</span>
+                    <div key={n.id} style={{ fontSize: '12px', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--border-glass)', background: 'rgba(255,255,255,0.01)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <p style={{ color: 'var(--text-primary)', lineHeight: '1.5' }}>{n.message}</p>
+                      <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{new Date(n.timestamp).toLocaleTimeString()}</span>
                     </div>
                   ))
                 )}
@@ -1107,46 +1163,52 @@ export default function App() {
       {/* Analytics Tab */}
       {activeTab === 'analytics' && (
         <div style={{ padding: '40px', maxWidth: '1600px', width: '100%', margin: '0 auto' }}>
-          <h2 style={{ fontSize: '24px', fontWeight: '700', marginBottom: '30px' }}>Campaign Engagement Analytics</h2>
+          <div style={{ marginBottom: '36px' }}>
+            <div style={{ fontSize: '10px', fontWeight: '800', color: 'var(--primary)', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '8px' }}>Overview</div>
+            <h2 style={{ fontSize: '28px', fontWeight: '800', color: 'var(--text-primary)' }}>Campaign Analytics</h2>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '40px' }}>
             {[
-              { label: 'Campaign Reach', value: analyticsOverview.total_reach.toLocaleString(), sub: 'Active monitoring', color: 'var(--accent)' },
-              { label: 'Total Likes', value: analyticsOverview.total_likes.toLocaleString(), sub: 'Likes engagement rate', color: 'var(--primary)' },
-              { label: 'Shares & Retweets', value: analyticsOverview.total_shares.toLocaleString(), sub: 'Organic amplifiers', color: 'var(--secondary)' },
-              { label: 'Avg Click-Through Rate', value: `${(analyticsOverview.average_ctr * 100).toFixed(2)}%`, sub: 'Avg conversion clickrate', color: 'var(--accent)' },
+              { label: 'Total Reach', value: analyticsOverview.total_reach.toLocaleString(), change: 'Across all platforms', color: 'var(--success)' },
+              { label: 'Total Likes', value: analyticsOverview.total_likes.toLocaleString(), change: 'Engagement metric', color: 'var(--primary)' },
+              { label: 'Shares & Retweets', value: analyticsOverview.total_shares.toLocaleString(), change: 'Organic amplification', color: 'var(--secondary)' },
+              { label: 'Avg Click-Through', value: `${(analyticsOverview.average_ctr * 100).toFixed(2)}%`, change: 'Conversion rate', color: 'var(--warning)' },
             ].map((kpi, i) => (
-              <div key={i} className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.05) 0%, rgba(217,70,239,0.05) 100%)' }}>
-                <h3 style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{kpi.label}</h3>
-                <p style={{ fontSize: '32px', fontWeight: '700', color: 'var(--text-primary)', margin: '8px 0 4px' }}>{kpi.value}</p>
-                <span style={{ fontSize: '12px', color: kpi.color, fontWeight: '600' }}>{kpi.sub}</span>
+              <div key={i} className="glass-panel" style={{ borderTop: `2px solid ${kpi.color}` }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '700', marginBottom: '12px' }}>{kpi.label}</div>
+                <div style={{ fontSize: '36px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-1px', marginBottom: '6px', lineHeight: 1 }}>{kpi.value}</div>
+                <div style={{ fontSize: '12px', color: kpi.color, fontWeight: '600' }}>{kpi.change}</div>
               </div>
             ))}
           </div>
           <div className="glass-panel">
-            <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px' }}>Published Posts Registry</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Published Posts Registry</h3>
+              <button onClick={fetchAnalytics} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '12px' }}>Refresh</button>
+            </div>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <table>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid var(--border-glass)', color: 'var(--text-secondary)' }}>
-                    {['Post ID', 'Campaign Title', 'Platform', 'Published At', 'Reach', 'Likes', 'Comments', 'Shares', 'CTR'].map(h => (
-                      <th key={h} style={{ padding: '14px 16px', fontSize: '12px', fontWeight: '700', letterSpacing: '0.5px', textTransform: 'uppercase' }}>{h}</th>
+                  <tr>
+                    {['Post ID', 'Title', 'Platform', 'Published', 'Reach', 'Likes', 'Comments', 'Shares', 'CTR'].map(h => (
+                      <th key={h}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {publishedPosts.length === 0 ? (
-                    <tr><td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No published posts yet. Approve a draft to publish.</td></tr>
+                    <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '50px' }}>No published posts yet. Approve a draft to publish.</td></tr>
                   ) : publishedPosts.map(p => (
-                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border-glass)' }}>
-                      <td style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '12px' }}>{p.platform_post_id}</td>
-                      <td style={{ padding: '14px 16px', fontWeight: '600' }}>{p.title}</td>
-                      <td style={{ padding: '14px 16px' }}>{platformIcon(p.platform)} {p.platform}</td>
-                      <td style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontSize: '13px' }}>{new Date(p.published_at).toLocaleString()}</td>
-                      <td style={{ padding: '14px 16px', fontWeight: '600' }}>{p.reach?.toLocaleString()}</td>
-                      <td style={{ padding: '14px 16px', color: 'var(--primary)' }}>{p.likes}</td>
-                      <td style={{ padding: '14px 16px' }}>{p.comments}</td>
-                      <td style={{ padding: '14px 16px', color: 'var(--secondary)' }}>{p.shares}</td>
-                      <td style={{ padding: '14px 16px', color: 'var(--accent)', fontWeight: '600' }}>{(p.ctr * 100).toFixed(2)}%</td>
+                    <tr key={p.id}>
+                      <td style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '12px' }}>{p.platform_post_id}</td>
+                      <td style={{ fontWeight: '600' }}>{p.title}</td>
+                      <td><span style={{ background: `${platformColor(p.platform)}18`, color: platformColor(p.platform), padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>{p.platform}</span></td>
+                      <td style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>{new Date(p.published_at).toLocaleString()}</td>
+                      <td style={{ fontWeight: '600' }}>{p.reach?.toLocaleString()}</td>
+                      <td style={{ color: 'var(--primary)', fontWeight: '600' }}>{p.likes}</td>
+                      <td>{p.comments}</td>
+                      <td style={{ color: 'var(--secondary)', fontWeight: '600' }}>{p.shares}</td>
+                      <td><span style={{ color: 'var(--success)', fontWeight: '700' }}>{(p.ctr * 100).toFixed(2)}%</span></td>
                     </tr>
                   ))}
                 </tbody>
@@ -1159,13 +1221,14 @@ export default function App() {
       {/* ── Campaign Manager Tab ─────────────────────────────────────────── */}
       {activeTab === 'campaigns' && (
         <div style={{ padding: '40px', maxWidth: '1200px', margin: '0 auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '36px' }}>
             <div>
-              <h2 style={{ fontSize: '28px', fontWeight: '800', color: 'var(--text-primary)', marginBottom: '6px' }}>🎯 Campaign Manager</h2>
-              <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Group prompts and posts under named campaigns. Track campaign-level reach, likes, and CTR.</p>
+              <div style={{ fontSize: '10px', fontWeight: '800', color: 'var(--primary)', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '8px' }}>Campaigns</div>
+              <h2 style={{ fontSize: '28px', fontWeight: '800', color: 'var(--text-primary)', marginBottom: '6px' }}>Campaign Manager</h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Group content posts under named campaigns and track performance.</p>
             </div>
-            <button onClick={handleRunScheduledQueue} className="btn btn-secondary" style={{ padding: '10px 20px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              ⏰ Run Scheduled Queue
+            <button onClick={handleRunScheduledQueue} className="btn btn-secondary" style={{ padding: '12px 22px', fontSize: '13px' }}>
+              Run Scheduled Queue
             </button>
           </div>
 
@@ -1173,7 +1236,7 @@ export default function App() {
 
             {/* Create Campaign Panel */}
             <div className="glass-panel" style={{ padding: '28px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '20px', color: 'var(--primary)' }}>✨ Create New Campaign</h3>
+              <div style={{ fontSize: '11px', fontWeight: '800', color: 'var(--primary)', letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: '16px' }}>Create New Campaign</div>
               <form onSubmit={handleCreateCampaign} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div className="form-group">
                   <label>Campaign Name</label>
@@ -1182,7 +1245,7 @@ export default function App() {
                 <div className="form-group">
                   <label>Target Platforms</label>
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '8px' }}>
-                    {['linkedin', 'instagram', 'twitter', 'facebook'].map(plat => (
+                    {ALL_PLATFORMS.map(plat => (
                       <label key={plat} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '13px' }}>
                         <input type="checkbox"
                           checked={newCampaignPlatforms.includes(plat)}
@@ -1192,7 +1255,8 @@ export default function App() {
                           }}
                           style={{ accentColor: 'var(--primary)' }}
                         />
-                        {platformIcon(plat)} {plat.charAt(0).toUpperCase() + plat.slice(1)}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>{platformIcon(plat, 13)}</span>
+                        {plat.charAt(0).toUpperCase() + plat.slice(1)}
                       </label>
                     ))}
                   </div>
@@ -1226,7 +1290,7 @@ export default function App() {
                       <h3 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '4px' }}>{c.name}</h3>
                       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                         {c.target_platforms.split(',').map(p => p.trim()).filter(Boolean).map(p => (
-                          <span key={p} style={{ background: `${platformColor(p)}22`, color: platformColor(p), fontSize: '11px', padding: '2px 8px', borderRadius: '10px', fontWeight: '700' }}>{platformIcon(p)} {p.toUpperCase()}</span>
+                          <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: `${platformColor(p)}22`, color: platformColor(p), fontSize: '11px', padding: '3px 9px', borderRadius: '10px', fontWeight: '700' }}>{platformIcon(p, 11)} {p.toUpperCase()}</span>
                         ))}
                       </div>
                     </div>
@@ -1505,7 +1569,7 @@ export default function App() {
                     const meta = parseDraftMeta(previewDraft.description);
                     const platforms = Object.keys(meta.platformPreviews).length > 0
                       ? Object.keys(meta.platformPreviews)
-                      : ['linkedin', 'instagram', 'twitter', 'facebook'];
+                      : ALL_PLATFORMS;
                     const activeP = platforms.includes(modalPlatformTab) ? modalPlatformTab : platforms[0];
 
                     return (
@@ -1522,7 +1586,7 @@ export default function App() {
                                 borderBottom: activeP === p ? `2px solid ${platformColor(p)}` : '2px solid transparent'
                               }}
                             >
-                              {platformIcon(p)} {p.toUpperCase()} PREVIEW
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>{platformIcon(p, 14)} {p.toUpperCase()} PREVIEW</span>
                             </button>
                           ))}
                         </div>
