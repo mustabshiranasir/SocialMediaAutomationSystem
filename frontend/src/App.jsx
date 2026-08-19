@@ -60,6 +60,8 @@ export default function App() {
   const [authPassword, setAuthPassword] = useState('');
   const [authName, setAuthName] = useState('');
 
+  // Theme State
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
   // Dashboard & Content State
   const [activeTab, setActiveTab] = useState('dashboard');
   const [promptText, setPromptText] = useState('');
@@ -112,6 +114,14 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Sync theme to DOM
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
 
   useEffect(() => {
     if (token) {
@@ -527,17 +537,32 @@ export default function App() {
       <>
       <style>{`
         @keyframes loginFadeIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
-        .login-wrapper { display: flex; min-height: 100vh; }
-        .login-left { flex: 1; background: radial-gradient(ellipse at 20% 50%, rgba(88,80,236,0.18) 0%, transparent 55%), radial-gradient(ellipse at 80% 80%, rgba(217,70,239,0.1) 0%, transparent 55%); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px; border-right: 1px solid var(--border-glass); }
-        .login-right { width: 480px; min-width: 480px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 50px; background: rgba(10,11,22,0.6); }
-        .login-card { width: 100%; animation: loginFadeIn 0.5s cubic-bezier(0.16,1,0.3,1); }
-        .login-input { width: 100%; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 14px 18px; color: var(--text-primary); font-family: var(--font-family); font-size: 15px; outline: none; transition: all 0.2s; box-sizing: border-box; }
-        .login-input:focus { border-color: var(--primary); background: rgba(88,80,236,0.06); box-shadow: 0 0 0 4px rgba(88,80,236,0.12); }
+        .login-wrapper { display: flex; min-height: 100vh; background: var(--bg-primary); }
+        .login-left { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px; border-right: 1px solid var(--border-subtle); background: var(--bg-primary); }
+        .login-right { width: 480px; min-width: 480px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 50px; background: var(--bg-secondary); }
+        .login-card { width: 100%; animation: loginFadeIn 0.5s ease; }
+        .login-input { width: 100%; background: var(--bg-primary); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px 18px; color: var(--text-primary); font-family: var(--font-family); font-size: 14px; outline: none; transition: var(--transition-fast); box-sizing: border-box; }
+        .login-input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(79,70,229,0.2); }
         .login-input::placeholder { color: var(--text-muted); }
-        .login-divider { height: 1px; background: var(--border-glass); margin: 28px 0; }
+        .login-divider { height: 1px; background: var(--border-subtle); margin: 28px 0; }
         @media (max-width: 900px) { .login-left { display: none; } .login-right { width: 100%; min-width: 0; padding: 40px 24px; } }
       `}</style>
-      <div className="login-wrapper">
+      <div className="login-wrapper" style={{ position: 'relative' }}>
+        {/* Floating theme toggle on login page */}
+        <button
+          id="login-theme-toggle-btn"
+          className="theme-toggle"
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 10 }}
+        >
+          <span className="theme-toggle-thumb">
+            <span key={theme} className="theme-toggle-icon">
+              {theme === 'dark' ? '🌙' : '☀️'}
+            </span>
+          </span>
+        </button>
         {/* Left branding panel */}
         <div className="login-left">
           <img src="https://media.licdn.com/dms/image/v2/D4D0BAQHIO-OBECZQPQ/company-logo_200_200/company-logo_200_200/0/1697892174722?e=2147483647&v=beta&t=iwbyDiYKZkyx2nsJh3Q2FD3sGCXOwSyWDfmZ70xVd2g" alt="ClickTake Technologies" style={{ width: '90px', height: '90px', objectFit: 'contain', borderRadius: '20px', background: '#fff', padding: '8px', marginBottom: '36px', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }} />
@@ -807,6 +832,13 @@ export default function App() {
               <h3 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', lineHeight: '1.3', marginBottom: '0' }}>
                 {draft.title}
               </h3>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
+                  {platforms.map(p => (
+                    <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '700', color: platformColor(p), background: `${platformColor(p)}15`, padding: '4px 8px', borderRadius: '4px' }}>
+                      {platformIcon(p, 12)} {p.toUpperCase()}
+                    </span>
+                  ))}
+                </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
               <button
@@ -822,127 +854,6 @@ export default function App() {
             </div>
           </div>
         </div>
-
-        {/* Content Tabs for Simulation */}
-        {platforms.length > 0 && (
-          <div style={{ borderBottom: '1px solid var(--border-glass)' }}>
-            <div style={{ display: 'flex' }}>
-              {platforms.map(p => (
-                <button
-                  key={p}
-                  onClick={() => setActivePlatformTab(prev => ({ ...prev, [draft.id]: p }))}
-                  style={{
-                    padding: '12px 20px', border: 'none', background: 'none', cursor: 'pointer',
-                    fontSize: '12px', fontWeight: '700', letterSpacing: '0.5px',
-                    color: activePlatform === p ? platformColor(p) : 'var(--text-muted)',
-                    borderBottom: activePlatform === p ? `2px solid ${platformColor(p)}` : '2px solid transparent',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                    {platformIcon(p, 14)}
-                    {p.toUpperCase()}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Live Simulator View */}
-        <div style={{ padding: '24px', background: 'rgba(0,0,0,0.1)', display: 'grid', gridTemplateColumns: '1fr', gap: '20px' }}>
-          <div style={{ maxWidth: '640px', margin: '0 auto', width: '100%' }}>
-            {renderSocialPreview()}
-          </div>
-        </div>
-
-        {/* Metadata Details (CTA, Talking Points) */}
-        <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {meta.cta && (
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(88,80,236,0.1), rgba(217,70,239,0.05))',
-              border: '1px solid rgba(88,80,236,0.2)', borderRadius: '10px',
-              padding: '12px 16px'
-            }}>
-              <span style={{ fontSize: '9px', color: 'var(--primary)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase', display: 'block' }}>Call to Action</span>
-              <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: '600' }}>{meta.cta}</span>
-            </div>
-          )}
-
-          {meta.keyPoints.length > 0 && (
-            <div>
-              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>Key Talking Points</span>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
-                {meta.keyPoints.map((pt, i) => (
-                  <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--primary)' }} />
-                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{pt}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {draft.hashtags && (
-            <div>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>Optimized Hashtags</span>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {draft.hashtags.split(' ').filter(Boolean).map((tag, i) => (
-                  <span key={i} style={{
-                    background: 'rgba(217,70,239,0.06)', border: '1px solid rgba(217,70,239,0.15)',
-                    color: 'var(--secondary)', fontSize: '11px', padding: '4px 10px', borderRadius: '20px',
-                    fontFamily: 'monospace', fontWeight: '600'
-                  }}>{tag}</span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* AI Improvement Panel (Admin only) */}
-        {user?.role === 'admin' && draft.status === 'Under Review' && (
-          <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border-glass)', background: 'rgba(88,80,236,0.02)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-              <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase' }}>AI Improvement Directive</span>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>— type adjustments and AI will regenerate copy and assets</span>
-            </div>
-            <div style={{ display: 'flex', gap: '14px' }}>
-              <textarea
-                value={improveTxt}
-                onChange={e => setImprovementTexts(prev => ({ ...prev, [draft.id]: e.target.value }))}
-                placeholder="e.g. Make the caption more urgent and emphasize the deadline."
-                rows={2}
-                style={{ flex: 1, padding: '12px 16px', fontSize: '13px', resize: 'vertical', lineHeight: '1.5', borderRadius: '8px', minHeight: '60px' }}
-              />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
-                <button
-                  onClick={() => handleImprove(draft.id)}
-                  disabled={!improveTxt.trim() || isImproving}
-                  className="btn btn-secondary"
-                  style={{ padding: '10px 18px', fontSize: '13px', whiteSpace: 'nowrap', minWidth: '160px' }}
-                >
-                  {isImproving ? 'Improving...' : 'Apply Improvement'}
-                </button>
-                <button
-                  onClick={() => handleApprove(draft.id)}
-                  className="btn"
-                  style={{ padding: '10px 18px', fontSize: '13px', background: 'var(--success)', whiteSpace: 'nowrap', boxShadow: '0 4px 15px var(--success-glow)' }}
-                >
-                  Approve and Publish
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Action bar for other states */}
-        {user?.role === 'admin' && draft.status === 'Publish Failed' && (
-          <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'flex-end' }}>
-            <button className="btn btn-outline" onClick={() => handleApprove(draft.id)} style={{ padding: '8px 16px', fontSize: '13px' }}>
-              Retry Publishing
-            </button>
-          </div>
-        )}
       </div>
     );
   };
@@ -970,6 +881,20 @@ export default function App() {
             <p style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>{user?.name}</p>
             <span className={`status-pill ${user?.role === 'admin' ? 'approved' : 'draft'}`} style={{ fontSize: '10px', padding: '2px 8px' }}>{user?.role?.toUpperCase()}</span>
           </div>
+          {/* Theme Toggle */}
+          <button
+            id="theme-toggle-btn"
+            className="theme-toggle"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            <span className="theme-toggle-thumb">
+              <span key={theme} className="theme-toggle-icon">
+                {theme === 'dark' ? '🌙' : '☀️'}
+              </span>
+            </span>
+          </button>
           <button className="btn btn-secondary" style={{ padding: '8px 18px', fontSize: '13px' }} onClick={handleLogout}>Sign Out</button>
         </div>
       </header>
@@ -1102,7 +1027,7 @@ export default function App() {
                     <p style={{ fontSize: '13px' }}>Submit a prompt above to generate your first AI campaign.</p>
                   </div>
                 ) : (
-                  drafts.map(draft => <DraftCard key={draft.id} draft={draft} />)
+                  drafts.map(draft => <React.Fragment key={draft.id}>{DraftCard({ draft })}</React.Fragment>)
                 )}
               </div>
             </div>
@@ -1610,7 +1535,35 @@ export default function App() {
               )}
             </div>
 
-            {/* Modal Footer */}
+            {/* Modal Footer & Admin Controls */}
+            {user?.role === 'admin' && previewDraft.status === 'Under Review' && !isEditingPreview && (
+              <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-secondary)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase' }}>AI Improvement Directive</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>— type adjustments and AI will regenerate copy and assets</span>
+                </div>
+                <div style={{ display: 'flex', gap: '14px' }}>
+                  <textarea
+                    value={improvementTexts[previewDraft.id] || ''}
+                    onChange={e => setImprovementTexts(prev => ({ ...prev, [previewDraft.id]: e.target.value }))}
+                    placeholder="e.g. Make the caption more urgent and emphasize the deadline."
+                    rows={2}
+                    style={{ flex: 1, padding: '12px 16px', fontSize: '13px', resize: 'vertical', lineHeight: '1.5', borderRadius: '8px', minHeight: '60px', background: 'var(--bg-primary)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
+                  />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
+                    <button
+                      onClick={() => handleImprove(previewDraft.id)}
+                      disabled={!(improvementTexts[previewDraft.id] || '').trim() || improvingDrafts[previewDraft.id]}
+                      className="btn btn-secondary"
+                      style={{ padding: '10px 18px', fontSize: '13px', whiteSpace: 'nowrap', minWidth: '160px' }}
+                    >
+                      {improvingDrafts[previewDraft.id] ? 'Improving...' : 'Apply Improvement'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="modal-footer">
               {isEditingPreview ? (
                 <>
@@ -1629,13 +1582,13 @@ export default function App() {
                   {user?.role === 'admin' && previewDraft.status !== 'Published' && (
                     <button
                       onClick={() => { handlePublishDraft(previewDraft.id); }}
-                      className="btn"
-                      style={{ padding: '8px 20px', fontSize: '13px', background: 'linear-gradient(135deg, #10b981, #059669)' }}
+                      className="btn btn-primary"
+                      style={{ padding: '8px 20px', fontSize: '13px' }}
                     >
                       🚀 Approve & Publish Now
                     </button>
                   )}
-                  <button onClick={closePreviewModal} className="btn btn-outline" style={{ padding: '8px 16px', fontSize: '13px' }}>
+                  <button onClick={closePreviewModal} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '13px' }}>
                     Close
                   </button>
                 </>
