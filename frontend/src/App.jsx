@@ -465,7 +465,7 @@ export default function App() {
   const handleConnectChannel = async (platform) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/accounts/link?platform=${platform}&auth_code=code_${platform}`, {
+      const res = await fetch(`${API_BASE}/api/accounts/link?platform=${encodeURIComponent(platform)}&auth_code=${encodeURIComponent('code_' + platform)}`, {
         method: 'POST', headers: getHeaders()
       });
       if (!res.ok) throw new Error('Failed to connect social account');
