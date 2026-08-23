@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, FileText, ChevronDown, Image, ShieldCheck,
   Link2, Users, Settings, LogOut, PenSquare, Tag, FolderOpen,
-  ImagePlus, List
+  ImagePlus, List, MessageSquare, BarChart2
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { getPendingPosts } from "@/lib/firestore";
@@ -57,6 +57,16 @@ export default function Sidebar() {
         { label: "Library", href: "/media" },
         { label: "Add Media File", href: "/media/add" },
       ],
+    },
+    {
+      label: "Comments",
+      href: "/comments",
+      icon: <MessageSquare className="w-4 h-4" />,
+    },
+    {
+      label: "Analytics",
+      href: "/analytics",
+      icon: <BarChart2 className="w-4 h-4" />,
     },
     {
       label: "Approvals",
