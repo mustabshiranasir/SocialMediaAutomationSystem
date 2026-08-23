@@ -123,17 +123,26 @@ Important: Return ONLY valid JSON, without markdown formatting blocks like \`\`\
       return NextResponse.json({ error: lastError || "Failed to generate content from AI providers." }, { status: 500 });
     }
 
-    // Clean up markdown json blocks if the AI returned them despite instructions
+    // Clean up the AI response to extract valid JSON
     let cleanJsonStr = generatedText.trim();
-    if (cleanJsonStr.startsWith("```json")) {
-      cleanJsonStr = cleanJsonStr.replace(/^```json\n?/, "").replace(/\n?```$/, "");
+    
+    // Strip <Think>...</Think> reasoning blocks (groq/compound adds these)
+    cleanJsonStr = cleanJsonStr.replace(/<Think>[\s\S]*?<\/Think>/gi, "").trim();
+    
+    // Strip markdown code fences
+    cleanJsonStr = cleanJsonStr.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?\s*```\s*$/i, "").trim();
+    
+    // If there's still non-JSON text around the object, extract the JSON object
+    const jsonMatch = cleanJsonStr.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleanJsonStr = jsonMatch[0];
     }
 
     try {
       const parsedData = JSON.parse(cleanJsonStr);
       return NextResponse.json({ success: true, provider, data: parsedData });
     } catch (parseErr) {
-      console.error("Failed to parse AI response as JSON", generatedText);
+      console.error("Failed to parse AI response as JSON. Raw text:", generatedText);
       return NextResponse.json({ error: "AI returned invalid JSON format." }, { status: 500 });
     }
 
