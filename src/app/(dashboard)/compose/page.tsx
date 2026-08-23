@@ -52,7 +52,16 @@ export default function Compose() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to generate AI content");
       
-      setAiResult(data.data);
+      const generated = data.data as AiResult;
+      setAiResult(generated);
+
+      // Auto-write to Final Post Content: prefer Facebook (more complete), fall back to Twitter
+      const primary = generated.facebook || generated.twitter;
+      if (primary) {
+        const hashtagStr = primary.hashtags?.join(" ") || "";
+        const combined = [primary.content, primary.cta, hashtagStr].filter(Boolean).join("\n\n");
+        setContent(combined);
+      }
     } catch (err: any) {
       console.error(err);
       setAiError(err.message);
