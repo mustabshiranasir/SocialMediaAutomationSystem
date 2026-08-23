@@ -1,26 +1,35 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Send, CheckCircle2, Loader2, Image as ImageIcon, Link as LinkIcon, Hash } from "lucide-react";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { useAuth } from "@/context/AuthContext";
 
 export default function Compose() {
+  const { user } = useAuth();
   const [content, setContent] = useState("");
   const [isPublishing, setIsPublishing] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [networks, setNetworks] = useState(["facebook", "twitter"]);
 
   const handlePublish = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (networks.length === 0 || !content.trim() || !user) return;
+
     setIsPublishing(true);
     setSuccess(false);
 
     try {
+      const idToken = await user.getIdToken();
+      
       const res = await fetch("/api/publish", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ content, networks }),
       });
 
       if (res.ok) {
