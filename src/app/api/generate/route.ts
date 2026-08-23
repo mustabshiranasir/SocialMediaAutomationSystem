@@ -67,6 +67,7 @@ Important: Return ONLY valid JSON, without markdown formatting blocks like \`\`\
 
     let generatedText = "";
     let provider = "";
+    let lastError = "";
 
     // Try Grok First
     if (aiCreds.grokApiKey) {
@@ -78,7 +79,7 @@ Important: Return ONLY valid JSON, without markdown formatting blocks like \`\`\
             "Authorization": `Bearer ${aiCreds.grokApiKey}`
           },
           body: JSON.stringify({
-            model: "grok-beta",
+            model: "grok-2-latest",
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: prompt }
@@ -92,10 +93,13 @@ Important: Return ONLY valid JSON, without markdown formatting blocks like \`\`\
           generatedText = grokData.choices[0].message.content;
           provider = "grok";
         } else {
-          console.warn("Grok API failed, falling back to Gemini.", await grokRes.text());
+          const errText = await grokRes.text();
+          console.warn("Grok API failed, falling back to Gemini.", errText);
+          lastError = `Grok Error: ${errText}`;
         }
-      } catch (err) {
+      } catch (err: any) {
         console.warn("Grok API threw an error, falling back to Gemini.", err);
+        lastError = `Grok Network Error: ${err.message}`;
       }
     }
 
@@ -107,14 +111,14 @@ Important: Return ONLY valid JSON, without markdown formatting blocks like \`\`\
         const result = await model.generateContent(`${systemPrompt}\n\nUser Idea: ${prompt}`);
         generatedText = result.response.text();
         provider = "gemini";
-      } catch (err) {
+      } catch (err: any) {
         console.error("Gemini API threw an error.", err);
-        return NextResponse.json({ error: "All AI providers failed to generate content." }, { status: 500 });
+        lastError = `Gemini Error: ${err.message}`;
       }
     }
 
     if (!generatedText) {
-      return NextResponse.json({ error: "Failed to generate content." }, { status: 500 });
+      return NextResponse.json({ error: lastError || "Failed to generate content from AI providers." }, { status: 500 });
     }
 
     // Clean up markdown json blocks if the AI returned them despite instructions
