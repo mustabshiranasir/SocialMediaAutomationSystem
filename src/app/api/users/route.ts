@@ -71,3 +71,46 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: error.message }, { status: error.message.includes("Forbidden") ? 403 : 500 });
   }
 }
+
+export async function POST(req: Request) {
+  try {
+    await authenticateAdmin(req);
+
+    const { email, password, name, role } = await req.json();
+
+    if (!email || !password || !role) {
+      return NextResponse.json({ error: "Email, password, and role are required" }, { status: 400 });
+    }
+
+    // 1. Create user in Firebase Auth
+    const userRecord = await adminAuth.createUser({
+      email,
+      password,
+      displayName: name || undefined,
+    });
+
+    // 2. Create user profile in Firestore with role
+    await adminDb.collection("users").doc(userRecord.uid).set({
+      email: userRecord.email,
+      role: role,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+
+    return NextResponse.json({ 
+      success: true, 
+      user: {
+        uid: userRecord.uid,
+        email: userRecord.email,
+        creationTime: userRecord.metadata.creationTime,
+        role: role
+      }
+    });
+  } catch (error: any) {
+    console.error("POST Users Error:", error);
+    return NextResponse.json(
+      { error: error.message }, 
+      { status: error.message.includes("Forbidden") ? 403 : 500 }
+    );
+  }
+}

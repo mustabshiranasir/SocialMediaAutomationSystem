@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowLeft, Loader2, ShieldAlert, Users, UserCog } from "lucide-react";
+import { ArrowLeft, Loader2, ShieldAlert, Users, UserCog, Plus, X } from "lucide-react";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
 
@@ -19,6 +19,14 @@ export default function TeamManagement() {
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  // Add User Modal State
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newRole, setNewRole] = useState<"admin" | "user">("user");
+  const [isAdding, setIsAdding] = useState(false);
 
   useEffect(() => {
     if (authLoading || role !== "admin") {
@@ -84,6 +92,43 @@ export default function TeamManagement() {
     }
   };
 
+  const handleAddUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setIsAdding(true);
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
+        body: JSON.stringify({
+          email: newEmail,
+          password: newPassword,
+          name: newName,
+          role: newRole
+        })
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      
+      setUsers([data.user, ...users]);
+      setShowAddModal(false);
+      setNewEmail("");
+      setNewPassword("");
+      setNewName("");
+      setNewRole("user");
+    } catch (error: any) {
+      console.error(error);
+      alert("Error adding user: " + error.message);
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
   if (authLoading) return null;
 
   if (role !== "admin") {
@@ -104,19 +149,27 @@ export default function TeamManagement() {
   return (
     <ProtectedRoute>
     <main className="min-h-screen p-8 max-w-5xl mx-auto">
-      <header className="flex justify-between items-center mb-12">
+      <header className="flex justify-between items-center mb-8">
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
           <h1 className="text-3xl font-bold tracking-tight">Team Management</h1>
           <p className="text-slate-400 text-sm mt-1">
             Manage your team's access and roles
           </p>
         </motion.div>
-        <Link
-          href="/"
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-white/5 hover:bg-white/10 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" /> Back to Dashboard
-        </Link>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-primary hover:bg-blue-600 text-white transition-colors shadow-lg shadow-blue-500/20"
+          >
+            <Plus className="w-4 h-4" /> Add User
+          </button>
+          <Link
+            href="/"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-white/5 hover:bg-white/10 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back to Dashboard
+          </Link>
+        </div>
       </header>
 
       {loading ? (
@@ -185,6 +238,88 @@ export default function TeamManagement() {
             </table>
           </div>
         </motion.div>
+      )}
+
+      {/* Add User Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="glass-panel p-6 rounded-2xl w-full max-w-md border border-white/10 relative shadow-2xl"
+          >
+            <button
+              onClick={() => setShowAddModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h2 className="text-xl font-bold mb-6">Add New User</h2>
+            <form onSubmit={handleAddUser} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Name (Optional)</label>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                  placeholder="e.g. John Doe"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Email *</label>
+                <input
+                  type="email"
+                  required
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                  placeholder="e.g. newuser@example.com"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Password *</label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                  placeholder="Minimum 6 characters"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Role *</label>
+                <select
+                  value={newRole}
+                  onChange={(e) => setNewRole(e.target.value as "admin" | "user")}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary appearance-none cursor-pointer"
+                >
+                  <option value="user">User (Standard)</option>
+                  <option value="admin">Administrator</option>
+                </select>
+              </div>
+              <div className="pt-4 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isAdding}
+                  className="flex items-center gap-2 px-6 py-2 bg-primary hover:bg-blue-600 text-white rounded-lg font-medium transition-colors disabled:opacity-70"
+                >
+                  {isAdding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                  Create User
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
       )}
     </main>
     </ProtectedRoute>
