@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowLeft, Save, Key, Shield } from "lucide-react";
+import ProtectedRoute from "@/components/ProtectedRoute";
 
 export default function Settings() {
   return (
+    <ProtectedRoute>
     <main className="min-h-screen p-8 max-w-4xl mx-auto">
       <header className="flex justify-between items-center mb-12">
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
@@ -164,5 +166,6 @@ export default function Settings() {
         </motion.section>
       </div>
     </main>
+    </ProtectedRoute>
   );
 }

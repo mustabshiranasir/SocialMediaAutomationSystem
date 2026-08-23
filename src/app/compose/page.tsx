@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Send, CheckCircle2, Loader2, Image as ImageIcon, Link as LinkIcon, Hash } from "lucide-react";
+import ProtectedRoute from "@/components/ProtectedRoute";
 
 export default function Compose() {
   const [content, setContent] = useState("");
@@ -35,6 +36,7 @@ export default function Compose() {
   };
 
   return (
+    <ProtectedRoute>
     <main className="min-h-screen p-8 max-w-4xl mx-auto">
       <header className="flex justify-between items-center mb-12">
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
@@ -156,5 +158,6 @@ export default function Compose() {
         </form>
       </motion.div>
     </main>
+    </ProtectedRoute>
   );
 }

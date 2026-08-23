@@ -2,9 +2,12 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Settings, PenSquare, ArrowUpRight, CheckCircle2, AlertCircle } from "lucide-react";
+import { Settings, PenSquare, ArrowUpRight, CheckCircle2, AlertCircle, LogOut } from "lucide-react";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import { useAuth } from "@/context/AuthContext";
 
 export default function Home() {
+  const { logout, user } = useAuth();
   const containerVariants = {
     hidden: { opacity: 0 },
     show: {
@@ -19,25 +22,33 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen p-8 max-w-7xl mx-auto overflow-hidden">
-      <motion.header 
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex justify-between items-center mb-12"
-      >
-        <div>
-          <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
-            SocialAuto
-          </h1>
-          <p className="text-slate-400 text-sm mt-1">
-            Your unified social media engine
-          </p>
-        </div>
-        <nav className="flex gap-4">
-          <Link
-            href="/settings"
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium hover:bg-white/5 transition-colors group"
-          >
+    <ProtectedRoute>
+      <main className="min-h-screen p-8 max-w-7xl mx-auto overflow-hidden">
+        <motion.header 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex justify-between items-center mb-12"
+        >
+          <div>
+            <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+              SocialAuto
+            </h1>
+            <p className="text-slate-400 text-sm mt-1">
+              Welcome back, {user?.email}
+            </p>
+          </div>
+          <nav className="flex items-center gap-4">
+            <button
+              onClick={() => logout()}
+              className="flex items-center gap-2 px-3 py-2 text-slate-400 hover:text-white transition-colors text-sm font-medium"
+              title="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+            <Link
+              href="/settings"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium hover:bg-white/5 transition-colors group"
+            >
             <Settings className="w-4 h-4 text-slate-400 group-hover:rotate-45 transition-transform" />
             Settings
           </Link>
@@ -120,5 +131,6 @@ export default function Home() {
         </div>
       </motion.div>
     </main>
+    </ProtectedRoute>
   );
 }
