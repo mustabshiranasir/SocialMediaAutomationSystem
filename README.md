@@ -270,6 +270,50 @@ cd Social-Media-Automation-System
 
 ---
 
+## 🚀 Deployment Guide
+
+### Deploy Backend (Render)
+1. Push your repository to GitHub.
+2. Log into [Render.com](https://render.com) and create a **New Blueprint**.
+3. Connect your repository. Render will automatically detect the `render.yaml` file in the root directory and deploy the FastAPI backend.
+4. Go to your Web Service in Render -> **Environment** and add your `GROQ_API_KEY` and `GEMINI_API_KEY`.
+5. Copy your live Render URL (e.g., `https://social-api.onrender.com`).
+
+### Deploy Frontend (Firebase)
+1. In `frontend/.env.production`, set your live Render URL:
+   ```env
+   VITE_API_BASE=https://social-api.onrender.com
+   ```
+2. Install Firebase CLI: `npm install -g firebase-tools`
+3. Log in: `firebase login`
+4. Initialize Hosting: `cd frontend && firebase init hosting` (Choose `dist` as public directory, and configure as single-page app).
+5. Build and deploy:
+   ```bash
+   npm run build
+   firebase deploy
+   ```
+
+---
+
+## 🔐 OAuth 2.0 Social Logins Setup
+
+The platform is pre-configured with OAuth 2.0 routes for 14 platforms (LinkedIn, Twitter, Meta, TikTok, YouTube, Reddit, Pinterest, etc.). 
+
+To enable real account linking:
+1. Register a Developer Application in the respective platform's portal (e.g., LinkedIn Developer Portal).
+2. Set the redirect URI in their portal to: `https://<YOUR-RENDER-URL>/api/oauth/callback/<platform>` (e.g., `.../api/oauth/callback/linkedin`).
+3. Add the generated Client IDs and Secrets to your backend Render **Environment** settings (and local `.env`):
+   ```env
+   LINKEDIN_CLIENT_ID=your_id
+   LINKEDIN_CLIENT_SECRET=your_secret
+   TWITTER_CLIENT_ID=your_id
+   TWITTER_CLIENT_SECRET=your_secret
+   # etc...
+   ```
+Once configured, clicking "Connect" in the React Dashboard will securely redirect the user to the official social login page.
+
+---
+
 ## 🎯 Step-by-Step User Workflow Guide
 
 1. **Register / Login**:

@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from .database import engine, Base
-from .routers import auth, drafts, accounts, analytics, campaigns
+from .routers import auth, drafts, accounts, analytics, campaigns, oauth
 from .skills.cloud_deployment import get_cloud_deployment_status
 from .skills.devops_tooling import run_system_health_audit
 
@@ -61,6 +61,7 @@ app.include_router(drafts.router)
 app.include_router(accounts.router)
 app.include_router(analytics.router)
 app.include_router(campaigns.router)
+app.include_router(oauth.router)
 
 @app.get("/")
 def read_root():

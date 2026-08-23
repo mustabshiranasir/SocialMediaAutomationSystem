@@ -472,17 +472,25 @@ export default function App() {
   };
 
   // ── Channel ops ──────────────────────────────────────────────────────────
-  const handleConnectChannel = async (platform) => {
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/accounts/link?platform=${encodeURIComponent(platform)}&auth_code=${encodeURIComponent('code_' + platform)}`, {
-        method: 'POST', headers: getHeaders()
-      });
-      if (!res.ok) throw new Error('Failed to connect social account');
-      fetchAccounts(); setSuccessMsg(`✅ Connected ${platform} account.`);
-    } catch (err) { setErrorMsg(err.message); }
-    finally { setLoading(false); }
+  const handleConnectChannel = (platform) => {
+    // Full page redirect to backend OAuth flow
+    window.location.href = `${API_BASE}/api/oauth/login/${encodeURIComponent(platform)}?token=${encodeURIComponent(token)}`;
   };
+
+  // Catch OAuth callbacks from the URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('oauth_success')) {
+      const platform = params.get('platform');
+      setSuccessMsg(`✅ Connected ${platform} account successfully!`);
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      fetchAccounts();
+    } else if (params.get('oauth_error')) {
+      setErrorMsg(`❌ Failed to connect account: ${params.get('oauth_error')}`);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   const handleDisconnectChannel = async (accountId) => {
     if (!confirm('Disconnect this channel?')) return;
