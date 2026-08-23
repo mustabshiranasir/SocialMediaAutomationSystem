@@ -7,18 +7,9 @@ import { useAuth } from "@/context/AuthContext";
 import { createPendingPost, createPublishedPost } from "@/lib/firestore";
 
 type AiResult = {
-  type: "clarification" | "post";
-  question?: string;
-  post?: {
-    facebook?: { content: string; cta: string; hashtags: string[] };
-    twitter?: { content: string; cta: string; hashtags: string[] };
-    seo?: { talkingPoints: string[]; targetAudience: string };
-  };
-};
-
-type Message = {
-  role: "user" | "assistant";
-  content: string;
+  facebook?: { content: string; cta: string; hashtags: string[] };
+  twitter?: { content: string; cta: string; hashtags: string[] };
+  seo?: { talkingPoints: string[]; targetAudience: string };
 };
 
 export default function Compose() {
@@ -33,9 +24,8 @@ export default function Compose() {
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiTone, setAiTone] = useState("Professional / Corporate");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [hasGenerated, setHasGenerated] = useState(false);
   const [aiError, setAiError] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [clarification, setClarification] = useState("");
 
   const toggleNetwork = (network: string) => {
     setNetworks(prev =>
@@ -43,7 +33,7 @@ export default function Compose() {
     );
   };
 
-  const buildContentForPlatforms = (generated: Exclude<AiResult["post"], undefined>, selectedNetworks: string[]): string => {
+  const buildContentForPlatforms = (generated: AiResult, selectedNetworks: string[]): string => {
     const parts: string[] = [];
 
     // If only one platform is selected, use that platform's content
@@ -77,60 +67,33 @@ export default function Compose() {
     return parts.filter(Boolean).join("\n\n");
   };
 
-  const handleGenerate = async (isRewrite = false, additionalContext = "") => {
-    if ((!aiPrompt.trim() && messages.length === 0) || !user) return;
+  const handleGenerate = async () => {
+    if (!aiPrompt.trim() || !user) return;
     
     setIsGenerating(true);
     setAiError("");
 
     try {
-      let newMessages = [...messages];
-      
-      if (isRewrite) {
-        newMessages.push({ role: "user", content: additionalContext || "Please rewrite this to give me a different variation." });
-      } else if (additionalContext) {
-        // User is answering a clarification
-        newMessages.push({ role: "user", content: additionalContext });
-      } else if (newMessages.length === 0) {
-        // First prompt
-        newMessages = [{ role: "user", content: aiPrompt }];
-      }
-
-      setMessages(newMessages);
-
       const idToken = await user.getIdToken();
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${idToken}` },
-        body: JSON.stringify({ messages: newMessages, tone: aiTone }),
+        body: JSON.stringify({ prompt: aiPrompt, tone: aiTone }),
       });
       
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to generate AI content");
       
       const generated = data.data as AiResult;
-      
-      if (generated.type === "clarification" && generated.question) {
-        setClarification(generated.question);
-        setMessages(prev => [...prev, { role: "assistant", content: generated.question! }]);
-      } else if (generated.type === "post" && generated.post) {
-        setClarification("");
-        setMessages(prev => [...prev, { role: "assistant", content: JSON.stringify(generated.post) }]);
-        const finalContent = buildContentForPlatforms(generated.post, networks);
-        setContent(finalContent);
-      }
+      const finalContent = buildContentForPlatforms(generated, networks);
+      setContent(finalContent);
+      setHasGenerated(true);
     } catch (err: any) {
       console.error(err);
       setAiError(err.message);
-      // Remove the last optimistic user message on error to allow retry
-      setMessages(prev => prev.slice(0, -1));
     } finally {
       setIsGenerating(false);
     }
-  };
-
-  const handleRewrite = () => {
-    handleGenerate(true);
   };
 
   const handlePublish = async (e: React.FormEvent) => {
@@ -230,57 +193,23 @@ export default function Compose() {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="sm:col-span-2">
-                {clarification ? (
-                  <div className="bg-black/50 border border-purple-500/30 rounded-xl p-3 h-full flex flex-col justify-between">
-                    <p className="text-sm text-purple-300 mb-2 font-medium">AI: {clarification}</p>
-                    <div className="flex gap-2">
-                      <input type="text"
-                        placeholder="Type your answer..."
-                        className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-purple-500"
-                        onKeyDown={e => {
-                          if (e.key === 'Enter' && e.currentTarget.value) {
-                            handleGenerate(false, e.currentTarget.value);
-                            e.currentTarget.value = "";
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} rows={2}
-                    placeholder="e.g. Announce our 50% off Summer Sale this weekend..."
-                    className="w-full h-full bg-black/30 border border-white/10 rounded-xl p-3 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm resize-none" />
-                )}
+                <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} rows={2}
+                  placeholder="e.g. Announce our 50% off Summer Sale this weekend..."
+                  className="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm resize-none" />
               </div>
-              <div className="space-y-2 flex flex-col justify-end">
-                <select value={aiTone} onChange={e => setAiTone(e.target.value)} disabled={messages.length > 0}
-                  className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50">
+              <div className="space-y-2">
+                <select value={aiTone} onChange={e => setAiTone(e.target.value)}
+                  className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:ring-2 focus:ring-purple-500">
                   <option>Professional / Corporate</option>
                   <option>Bold / Energetic</option>
                   <option>Friendly / Social</option>
                   <option>Witty / Playful</option>
                 </select>
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => handleGenerate()} disabled={isGenerating || (!aiPrompt.trim() && messages.length === 0) || !!clarification}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-xl text-xs font-medium transition-all shadow-lg shadow-purple-500/20 disabled:opacity-50">
-                    {isGenerating && !clarification ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                    {isGenerating && !clarification ? "Generating..." : "Generate ✨"}
-                  </button>
-                  {messages.length > 0 && !clarification && (
-                    <button type="button" onClick={handleRewrite} disabled={isGenerating}
-                      className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-medium transition-all disabled:opacity-50"
-                      title="Rewrite/Regenerate">
-                      {isGenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "↻"}
-                    </button>
-                  )}
-                  {messages.length > 0 && (
-                    <button type="button" onClick={() => { setMessages([]); setClarification(""); setAiPrompt(""); }}
-                      className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl text-xs font-medium transition-all"
-                      title="Clear Chat">
-                      ✕
-                    </button>
-                  )}
-                </div>
+                <button type="button" onClick={handleGenerate} disabled={isGenerating || !aiPrompt.trim()}
+                  className="w-full flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-xl text-xs font-medium transition-all shadow-lg shadow-purple-500/20 disabled:opacity-50">
+                  {isGenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  {isGenerating ? "Generating..." : (hasGenerated ? "Rewrite / Regenerate ✨" : "Generate ✨")}
+                </button>
               </div>
             </div>
             {aiError && <p className="text-xs text-red-400">{aiError}</p>}

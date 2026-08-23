@@ -21,10 +21,10 @@ export async function POST(req: Request) {
     }
     
     const userId = decodedToken.uid;
-    const { prompt, tone, messages } = await req.json();
+    const { prompt, tone } = await req.json();
 
-    if (!prompt && (!messages || messages.length === 0)) {
-      return NextResponse.json({ error: "Prompt or messages are required" }, { status: 400 });
+    if (!prompt) {
+      return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
     }
 
     // Find the admin user to get the organization's AI API keys
@@ -42,44 +42,28 @@ export async function POST(req: Request) {
     }
 
     const systemPrompt = `You are an expert social media manager.
-Your task is to generate tailored content for Facebook and Twitter based on the user's campaign idea.
+Given a broad campaign idea and a brand tone, generate tailored content for Facebook and Twitter.
 Brand Tone: ${tone || "Professional / Corporate"}
 
-If the user's request is too brief, ambiguous, or lacks critical details (e.g. date, specific product, target audience), you MUST ask a clarifying question.
-If you have enough information, generate the final posts.
-
-Return a JSON object strictly matching ONE of these two structures:
-
-OPTION 1: Need Clarification
+Return a JSON object strictly matching this structure:
 {
-  "type": "clarification",
-  "question": "What is the specific date for the event?"
-}
-
-OPTION 2: Final Post
-{
-  "type": "post",
-  "post": {
-    "facebook": {
-      "content": "The Facebook post text with emojis.",
-      "cta": "Call to action text.",
-      "hashtags": ["#tag1", "#tag2"]
-    },
-    "twitter": {
-      "content": "The Twitter post text, shorter and punchier.",
-      "cta": "Call to action.",
-      "hashtags": ["#tag1", "#tag2"]
-    },
-    "seo": {
-      "talkingPoints": ["point 1", "point 2"],
-      "targetAudience": "Description of the target audience."
-    }
+  "facebook": {
+    "content": "The Facebook post text with emojis.",
+    "cta": "Call to action text.",
+    "hashtags": ["#tag1", "#tag2"]
+  },
+  "twitter": {
+    "content": "The Twitter post text, shorter and punchier.",
+    "cta": "Call to action.",
+    "hashtags": ["#tag1", "#tag2"]
+  },
+  "seo": {
+    "talkingPoints": ["point 1", "point 2"],
+    "targetAudience": "Description of the target audience."
   }
 }
 
 Important: Return ONLY valid JSON, without markdown formatting blocks like \`\`\`json.`;
-
-    const chatHistory = messages || [{ role: "user", content: prompt }];
 
     let generatedText = "";
     let provider = "";
@@ -99,7 +83,7 @@ Important: Return ONLY valid JSON, without markdown formatting blocks like \`\`\
             response_format: { type: "json_object" },
             messages: [
               { role: "system", content: systemPrompt },
-              ...chatHistory
+              { role: "user", content: prompt }
             ],
             temperature: 0.7,
             max_tokens: 800
@@ -126,9 +110,7 @@ Important: Return ONLY valid JSON, without markdown formatting blocks like \`\`\
       try {
         const genAI = new GoogleGenerativeAI(aiCreds.geminiApiKey);
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        // Map chat history to Gemini's format if using multi-turn, or just combine it
-        const combinedPrompt = chatHistory.map((m: any) => `${m.role}: ${m.content}`).join("\n");
-        const result = await model.generateContent(`${systemPrompt}\n\n${combinedPrompt}`);
+        const result = await model.generateContent(`${systemPrompt}\n\nUser Idea: ${prompt}`);
         generatedText = result.response.text();
         provider = "gemini";
       } catch (err: any) {
