@@ -14,9 +14,15 @@ export type TwitterCredentials = {
   accessTokenSecret: string;
 };
 
+export type AiCredentials = {
+  grokApiKey: string;
+  geminiApiKey: string;
+};
+
 export type SocialAccountsData = {
   facebook?: FacebookCredentials;
   twitter?: TwitterCredentials;
+  ai?: AiCredentials;
 };
 
 /**
@@ -24,8 +30,8 @@ export type SocialAccountsData = {
  */
 export async function saveCredentials(
   userId: string,
-  provider: "facebook" | "twitter",
-  credentials: FacebookCredentials | TwitterCredentials
+  provider: "facebook" | "twitter" | "ai",
+  credentials: FacebookCredentials | TwitterCredentials | AiCredentials
 ) {
   const userRef = doc(db, "users", userId);
   
