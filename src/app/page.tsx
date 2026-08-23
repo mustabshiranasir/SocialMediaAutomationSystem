@@ -1,13 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "framer-motion";
-import { Settings, PenSquare, ArrowUpRight, CheckCircle2, AlertCircle, LogOut, ShieldCheck, Users } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect } from "react";
+import { Settings, PenSquare, ArrowUpRight, CheckCircle2, AlertCircle, LogOut, ShieldCheck, Users, Bell } from "lucide-react";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
+import { getPendingPosts } from "@/lib/firestore";
 
 export default function Home() {
   const { logout, user, role } = useAuth();
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    if (role !== "admin") return;
+    getPendingPosts()
+      .then(posts => setPendingCount(posts.length))
+      .catch(console.error);
+  }, [role]);
+
   const containerVariants: any = {
     hidden: { opacity: 0 },
     show: {
@@ -56,10 +67,19 @@ export default function Home() {
                 </Link>
                 <Link
                   href="/approvals"
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium hover:bg-white/5 transition-colors group text-emerald-400"
+                  className="relative flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium hover:bg-white/5 transition-colors group text-emerald-400"
                 >
                   <ShieldCheck className="w-4 h-4 group-hover:scale-110 transition-transform" />
                   Approvals
+                  {pendingCount > 0 && (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-lg shadow-red-500/40"
+                    >
+                      {pendingCount > 9 ? "9+" : pendingCount}
+                    </motion.span>
+                  )}
                 </Link>
               </>
             )}
@@ -82,6 +102,42 @@ export default function Home() {
         </nav>
       </motion.header>
 
+      {/* Admin Pending Posts Alert Banner */}
+      <AnimatePresence>
+        {role === "admin" && pendingCount > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -10, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: "auto" }}
+            exit={{ opacity: 0, y: -10, height: 0 }}
+            className="mb-6 overflow-hidden"
+          >
+            <Link href="/approvals">
+              <div className="flex items-center justify-between p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/15 transition-colors cursor-pointer">
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <Bell className="w-5 h-5 text-amber-400" />
+                    <motion.span
+                      animate={{ scale: [1, 1.3, 1] }}
+                      transition={{ repeat: Infinity, duration: 2 }}
+                      className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-amber-300">
+                      {pendingCount} post{pendingCount > 1 ? "s" : ""} waiting for your approval
+                    </p>
+                    <p className="text-xs text-amber-400/70 mt-0.5">Click to review and publish</p>
+                  </div>
+                </div>
+                <span className="text-xs font-medium text-amber-400 bg-amber-500/20 px-3 py-1 rounded-full">
+                  Review Now →
+                </span>
+              </div>
+            </Link>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <motion.div 
         variants={containerVariants}
         initial="hidden"
@@ -100,8 +156,22 @@ export default function Home() {
           </div>
         </motion.div>
 
+        {/* Pending Approvals Card (admin only) */}
+        {role === "admin" && (
+          <motion.div variants={itemVariants} className="glass-panel rounded-2xl p-6 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl -mr-16 -mt-16 group-hover:bg-amber-500/20 transition-colors"></div>
+            <h3 className="text-sm font-medium text-slate-400 flex items-center gap-2">
+              Pending Approvals
+            </h3>
+            <p className="text-5xl font-bold mt-2 text-amber-400">{pendingCount}</p>
+            <Link href="/approvals" className="mt-4 text-sm text-amber-500/70 hover:text-amber-400 flex items-center gap-1 transition-colors">
+              <ShieldCheck className="w-4 h-4" /> Review queue →
+            </Link>
+          </motion.div>
+        )}
+
         {/* Connected Accounts */}
-        <motion.div variants={itemVariants} className="glass-panel rounded-2xl p-6 col-span-1 md:col-span-2 relative overflow-hidden">
+        <motion.div variants={itemVariants} className={`glass-panel rounded-2xl p-6 relative overflow-hidden ${role === "admin" ? "col-span-1" : "col-span-1 md:col-span-2"}`}>
           <div className="absolute bottom-0 right-0 w-48 h-48 bg-emerald-500/5 rounded-full blur-3xl"></div>
           <h3 className="text-sm font-medium text-slate-400 mb-4">
             Connected Accounts (Preview)

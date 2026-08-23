@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Check, X, Loader2, ShieldAlert } from "lucide-react";
+import { ArrowLeft, Check, X, Loader2, ShieldAlert, Pencil, Save } from "lucide-react";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
 import { getPendingPosts, updatePostStatus, Post } from "@/lib/firestore";
@@ -13,6 +13,10 @@ export default function Approvals() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
+
+  // Edit state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editedContent, setEditedContent] = useState<string>("");
 
   useEffect(() => {
     if (authLoading || role !== "admin") {
@@ -26,7 +30,6 @@ export default function Approvals() {
     setLoading(true);
     try {
       const pending = await getPendingPosts();
-      // Sort newest first
       setPosts(pending.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis()));
     } catch (error) {
       console.error(error);
@@ -35,9 +38,22 @@ export default function Approvals() {
     }
   };
 
+  const startEditing = (post: Post) => {
+    setEditingId(post.id!);
+    setEditedContent(post.content);
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditedContent("");
+  };
+
   const handleApprove = async (post: Post) => {
     if (!user || !post.id) return;
     setProcessingId(post.id);
+
+    // Use edited content if this post was being edited
+    const contentToPublish = editingId === post.id ? editedContent : post.content;
 
     try {
       const idToken = await user.getIdToken();
@@ -47,7 +63,7 @@ export default function Approvals() {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${idToken}`
         },
-        body: JSON.stringify({ content: post.content, networks: post.networks }),
+        body: JSON.stringify({ content: contentToPublish, networks: post.networks }),
       });
 
       if (!res.ok) {
@@ -56,6 +72,8 @@ export default function Approvals() {
 
       await updatePostStatus(post.id, "published");
       setPosts(posts.filter(p => p.id !== post.id));
+      setEditingId(null);
+      setEditedContent("");
     } catch (error) {
       console.error(error);
       alert("Error approving post. Ensure your API keys are configured in Settings.");
@@ -69,6 +87,7 @@ export default function Approvals() {
     try {
       await updatePostStatus(postId, "rejected");
       setPosts(posts.filter(p => p.id !== postId));
+      if (editingId === postId) cancelEditing();
     } catch (error) {
       console.error(error);
     } finally {
@@ -100,7 +119,7 @@ export default function Approvals() {
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
           <h1 className="text-3xl font-bold tracking-tight">Approval Queue</h1>
           <p className="text-slate-400 text-sm mt-1">
-            Review and publish posts submitted by your team
+            Review, edit, and publish posts submitted by your team
           </p>
         </motion.div>
         <Link
@@ -124,17 +143,22 @@ export default function Approvals() {
       ) : (
         <div className="space-y-4">
           <AnimatePresence>
-            {posts.map((post) => (
-              <motion.div
-                key={post.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="glass-panel rounded-2xl p-6"
-              >
-                <div className="flex justify-between items-start gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-3">
+            {posts.map((post) => {
+              const isEditing = editingId === post.id;
+              return (
+                <motion.div
+                  key={post.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="glass-panel rounded-2xl p-6"
+                >
+                  {/* Header row */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-bold">
+                        {post.authorEmail[0].toUpperCase()}
+                      </div>
                       <span className="text-sm font-medium text-slate-300 bg-white/5 px-2.5 py-1 rounded-md">
                         {post.authorEmail}
                       </span>
@@ -142,7 +166,59 @@ export default function Approvals() {
                         {post.createdAt?.toDate().toLocaleDateString()}
                       </span>
                     </div>
-                    <p className="text-lg whitespace-pre-wrap mb-4">{post.content}</p>
+                    {/* Edit toggle */}
+                    {!isEditing ? (
+                      <button
+                        onClick={() => startEditing(post)}
+                        disabled={processingId !== null}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50"
+                      >
+                        <Pencil className="w-3.5 h-3.5" /> Edit
+                      </button>
+                    ) : (
+                      <button
+                        onClick={cancelEditing}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" /> Cancel Edit
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Content */}
+                  <AnimatePresence mode="wait">
+                    {isEditing ? (
+                      <motion.div
+                        key="editing"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="mb-4"
+                      >
+                        <textarea
+                          value={editedContent}
+                          onChange={(e) => setEditedContent(e.target.value)}
+                          rows={5}
+                          className="w-full bg-black/40 border border-primary/40 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary resize-none transition-all text-sm"
+                          placeholder="Edit post content..."
+                        />
+                        <p className="text-xs text-slate-500 mt-1 text-right">{editedContent.length} chars</p>
+                      </motion.div>
+                    ) : (
+                      <motion.p
+                        key="reading"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="text-base whitespace-pre-wrap mb-4 text-slate-200 leading-relaxed"
+                      >
+                        {post.content}
+                      </motion.p>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Networks + Actions */}
+                  <div className="flex items-center justify-between">
                     <div className="flex gap-2">
                       {post.networks.map(n => (
                         <span key={n} className="text-xs font-medium uppercase tracking-wider bg-primary/20 text-blue-300 px-2 py-1 rounded">
@@ -150,29 +226,31 @@ export default function Approvals() {
                         </span>
                       ))}
                     </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleReject(post.id!)}
+                        disabled={processingId !== null}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                      >
+                        <X className="w-4 h-4" /> Reject
+                      </button>
+                      <button
+                        onClick={() => handleApprove(post)}
+                        disabled={processingId !== null}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                      >
+                        {processingId === post.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Check className="w-4 h-4" />
+                        )}
+                        {isEditing ? "Save & Approve" : "Approve"}
+                      </button>
+                    </div>
                   </div>
-                  
-                  <div className="flex flex-col gap-2">
-                    <button
-                      onClick={() => handleApprove(post)}
-                      disabled={processingId !== null}
-                      className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded-lg font-medium transition-colors disabled:opacity-50"
-                    >
-                      {processingId === post.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => handleReject(post.id!)}
-                      disabled={processingId !== null}
-                      className="flex items-center justify-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg font-medium transition-colors disabled:opacity-50"
-                    >
-                      <X className="w-4 h-4" />
-                      Reject
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
+                </motion.div>
+              );
+            })}
           </AnimatePresence>
         </div>
       )}
