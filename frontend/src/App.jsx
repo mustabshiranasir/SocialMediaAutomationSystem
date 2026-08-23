@@ -5,7 +5,7 @@ import {
 } from 'react-icons/fa6';
 import { FaTwitter, FaXing } from 'react-icons/fa';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
 // ── Utility: parse platform previews & key points from description text ──────
 function parseDraftMeta(description) {
