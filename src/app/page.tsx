@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Settings, PenSquare, ArrowUpRight, CheckCircle2, AlertCircle, LogOut, ShieldCheck } from "lucide-react";
+import { Settings, PenSquare, ArrowUpRight, CheckCircle2, AlertCircle, LogOut, ShieldCheck, Users } from "lucide-react";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
 
@@ -46,13 +46,22 @@ export default function Home() {
               <LogOut className="w-4 h-4" />
             </button>
             {role === "admin" && (
-              <Link
-                href="/approvals"
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium hover:bg-white/5 transition-colors group text-emerald-400"
-              >
-                <ShieldCheck className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                Approvals
-              </Link>
+              <>
+                <Link
+                  href="/team"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium hover:bg-white/5 transition-colors group text-purple-400"
+                >
+                  <Users className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                  Team
+                </Link>
+                <Link
+                  href="/approvals"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium hover:bg-white/5 transition-colors group text-emerald-400"
+                >
+                  <ShieldCheck className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                  Approvals
+                </Link>
+              </>
             )}
             <Link
               href="/settings"
