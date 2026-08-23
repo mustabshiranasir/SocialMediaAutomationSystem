@@ -161,12 +161,12 @@ export default function Settings() {
               </div>
               <div>
                 <h2 className="text-xl font-semibold">AI Integrations</h2>
-                <p className="text-sm text-slate-400">Connect Grok and Gemini APIs for AI-powered content generation.</p>
+                <p className="text-sm text-slate-400">Connect Groq and Gemini APIs for AI-powered content generation.</p>
               </div>
             </div>
             <form onSubmit={handleSaveAi} className="space-y-5 relative z-10 max-w-2xl">
               {[
-                { label: "Grok API Key (xAI)", key: "grokApiKey", type: "password", val: ai.grokApiKey, ph: "Enter xAI Grok API Key" },
+                { label: "Groq API Key", key: "grokApiKey", type: "password", val: ai.grokApiKey, ph: "Enter Groq API Key (gsk_...)" },
                 { label: "Google Gemini API Key", key: "geminiApiKey", type: "password", val: ai.geminiApiKey, ph: "Enter Gemini API Key (Fallback)" },
               ].map(field => (
                 <div key={field.key}>

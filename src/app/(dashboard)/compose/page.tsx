@@ -121,7 +121,7 @@ export default function Compose() {
               </div>
               <div>
                 <h2 className="text-lg font-bold">AI Campaign Generator</h2>
-                <p className="text-xs text-slate-400">Powered by Grok & Gemini</p>
+                <p className="text-xs text-slate-400">Powered by Groq & Gemini</p>
               </div>
             </div>
 

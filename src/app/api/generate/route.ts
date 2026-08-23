@@ -69,17 +69,18 @@ Important: Return ONLY valid JSON, without markdown formatting blocks like \`\`\
     let provider = "";
     let lastError = "";
 
-    // Try Grok First
+    // Try Groq First
     if (aiCreds.grokApiKey) {
       try {
-        const grokRes = await fetch("https://api.x.ai/v1/chat/completions", {
+        const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${aiCreds.grokApiKey}`
           },
           body: JSON.stringify({
-            model: "grok-2-latest",
+            model: "llama-3.1-70b-versatile",
+            response_format: { type: "json_object" },
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: prompt }
@@ -88,22 +89,22 @@ Important: Return ONLY valid JSON, without markdown formatting blocks like \`\`\
           })
         });
 
-        if (grokRes.ok) {
-          const grokData = await grokRes.json();
-          generatedText = grokData.choices[0].message.content;
-          provider = "grok";
+        if (groqRes.ok) {
+          const groqData = await groqRes.json();
+          generatedText = groqData.choices[0].message.content;
+          provider = "groq";
         } else {
-          const errText = await grokRes.text();
-          console.warn("Grok API failed, falling back to Gemini.", errText);
-          lastError = `Grok Error: ${errText}`;
+          const errText = await groqRes.text();
+          console.warn("Groq API failed, falling back to Gemini.", errText);
+          lastError = `Groq Error: ${errText}`;
         }
       } catch (err: any) {
-        console.warn("Grok API threw an error, falling back to Gemini.", err);
-        lastError = `Grok Network Error: ${err.message}`;
+        console.warn("Groq API threw an error, falling back to Gemini.", err);
+        lastError = `Groq Network Error: ${err.message}`;
       }
     }
 
-    // Fallback to Gemini if Grok failed or is not configured
+    // Fallback to Gemini if Groq failed or is not configured
     if (!generatedText && aiCreds.geminiApiKey) {
       try {
         const genAI = new GoogleGenerativeAI(aiCreds.geminiApiKey);
