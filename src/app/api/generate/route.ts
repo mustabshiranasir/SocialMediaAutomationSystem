@@ -79,7 +79,7 @@ Important: Return ONLY valid JSON, without markdown formatting blocks like \`\`\
             "Authorization": `Bearer ${aiCreds.grokApiKey}`
           },
           body: JSON.stringify({
-            model: "llama-3.1-70b-versatile",
+            model: "groq/compound",
             response_format: { type: "json_object" },
             messages: [
               { role: "system", content: systemPrompt },
