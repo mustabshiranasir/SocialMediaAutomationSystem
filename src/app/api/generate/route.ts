@@ -27,14 +27,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
     }
 
-    // Fetch user credentials from Firestore to get API keys
-    const userDoc = await adminDb.collection("users").doc(userId).get();
-    if (!userDoc.exists) {
-      return NextResponse.json({ error: "User credentials not found" }, { status: 404 });
+    // Find the admin user to get the organization's AI API keys
+    const adminDocs = await adminDb.collection("users").where("role", "==", "admin").limit(1).get();
+    if (adminDocs.empty) {
+      return NextResponse.json({ error: "No admin user found to provide API keys." }, { status: 404 });
     }
 
-    const data = userDoc.data();
-    const socialAccounts = data?.socialAccounts as SocialAccountsData | undefined;
+    const adminData = adminDocs.docs[0].data();
+    const socialAccounts = adminData?.socialAccounts as SocialAccountsData | undefined;
     const aiCreds = socialAccounts?.ai;
 
     if (!aiCreds?.grokApiKey && !aiCreds?.geminiApiKey) {
