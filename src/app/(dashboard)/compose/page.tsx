@@ -4,7 +4,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send, CheckCircle2, Loader2, Image as ImageIcon, Link as LinkIcon, Hash, Sparkles, ChevronRight, Check } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { createPendingPost } from "@/lib/firestore";
+import { createPendingPost, createPublishedPost } from "@/lib/firestore";
 
 type AiResult = {
   facebook?: { content: string; cta: string; hashtags: string[] };
@@ -92,13 +92,23 @@ export default function Compose() {
 
     try {
       if (role === "admin") {
-        const idToken = await user.getIdToken();
-        const res = await fetch("/api/publish", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${idToken}` },
-          body: JSON.stringify({ content, networks }),
-        });
-        if (res.ok) { setSuccess(true); setContent(""); }
+        // Always save the post to Firestore first
+        await createPublishedPost({ content, networks, authorId: user.uid, authorEmail: user.email || "Unknown" });
+        
+        // Then attempt to publish to social platforms (non-blocking)
+        try {
+          const idToken = await user.getIdToken();
+          await fetch("/api/publish", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${idToken}` },
+            body: JSON.stringify({ content, networks }),
+          });
+        } catch (pubErr) {
+          console.warn("Social publish failed, but post was saved:", pubErr);
+        }
+        
+        setSuccess(true); 
+        setContent("");
       } else {
         await createPendingPost({ content, networks, authorId: user.uid, authorEmail: user.email || "Unknown" });
         setSuccess(true);
@@ -155,8 +165,17 @@ export default function Compose() {
 
               <button type="button" onClick={handleGenerate} disabled={isGenerating || !aiPrompt.trim()}
                 className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-xl font-medium transition-all shadow-lg shadow-purple-500/20 disabled:opacity-50">
-                {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                {isGenerating ? "Generating Magic..." : "Generate AI Content"}
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Generating Magic...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-5 h-5" />
+                    <span>Generate AI Content</span>
+                  </>
+                )}
               </button>
               
               {aiError && <p className="text-xs text-red-400 text-center">{aiError}</p>}
@@ -301,8 +320,17 @@ export default function Compose() {
             <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="submit"
               disabled={isPublishing || !content.trim() || networks.length === 0}
               className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-primary hover:bg-blue-600 text-white rounded-xl font-medium shadow-lg shadow-blue-500/20 transition-all disabled:opacity-70 disabled:cursor-not-allowed">
-              {isPublishing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-              {isPublishing ? (role === "admin" ? "Publishing..." : "Submitting...") : (role === "admin" ? "Publish Now" : "Submit for Approval")}
+              {isPublishing ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>{role === "admin" ? "Publishing..." : "Submitting..."}</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-5 h-5" />
+                  <span>{role === "admin" ? "Publish Now" : "Submit for Approval"}</span>
+                </>
+              )}
             </motion.button>
           </form>
         </motion.div>

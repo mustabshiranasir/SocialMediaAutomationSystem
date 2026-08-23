@@ -71,14 +71,23 @@ export type Post = {
   createdAt: any;
 };
 
-/**
- * Creates a new pending post for a user.
- */
 export async function createPendingPost(post: Omit<Post, "id" | "status" | "createdAt">) {
   const postsRef = collection(db, "posts");
   await addDoc(postsRef, {
     ...post,
     status: "pending",
+    createdAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Creates a new published post for a user.
+ */
+export async function createPublishedPost(post: Omit<Post, "id" | "status" | "createdAt">) {
+  const postsRef = collection(db, "posts");
+  await addDoc(postsRef, {
+    ...post,
+    status: "published",
     createdAt: serverTimestamp(),
   });
 }

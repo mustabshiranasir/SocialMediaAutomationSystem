@@ -79,13 +79,14 @@ Important: Return ONLY valid JSON, without markdown formatting blocks like \`\`\
             "Authorization": `Bearer ${aiCreds.grokApiKey}`
           },
           body: JSON.stringify({
-            model: "groq/compound",
+            model: "llama-3.3-70b-versatile", // Use latest production Llama 3.3 70B
             response_format: { type: "json_object" },
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: prompt }
             ],
-            temperature: 0.7
+            temperature: 0.7,
+            max_tokens: 800
           })
         });
 
