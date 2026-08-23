@@ -8,7 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 
 export default function Home() {
   const { logout, user, role } = useAuth();
-  const containerVariants = {
+  const containerVariants: any = {
     hidden: { opacity: 0 },
     show: {
       opacity: 1,
@@ -16,9 +16,9 @@ export default function Home() {
     }
   };
 
-  const itemVariants = {
+  const itemVariants: any = {
     hidden: { opacity: 0, y: 20 },
-    show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
+    show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 300, damping: 24 } }
   };
 
   return (

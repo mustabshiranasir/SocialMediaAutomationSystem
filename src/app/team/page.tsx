@@ -113,7 +113,7 @@ export default function TeamManagement() {
       });
       
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(`${data.error}\n\nStack:\n${data.stack || 'None'}`);
       
       setUsers([data.user, ...users]);
       setShowAddModal(false);

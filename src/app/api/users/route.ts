@@ -1,4 +1,4 @@
-import { NextResponse } from "next/response";
+import { NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
 
 // Helper to authenticate requests
@@ -30,12 +30,12 @@ export async function GET(req: Request) {
     // Fetch all role data from Firestore
     const usersSnapshot = await adminDb.collection("users").get();
     const roleMap = new Map();
-    usersSnapshot.forEach(doc => {
+    usersSnapshot.forEach((doc: any) => {
       roleMap.set(doc.id, doc.data().role || "user");
     });
 
     // Merge data
-    const users = listUsersResult.users.map(userRecord => ({
+    const users = listUsersResult.users.map((userRecord: any) => ({
       uid: userRecord.uid,
       email: userRecord.email,
       creationTime: userRecord.metadata.creationTime,
@@ -68,7 +68,8 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ success: true, newRole });
   } catch (error: any) {
     console.error("PATCH Users Error:", error);
-    return NextResponse.json({ error: error.message }, { status: error.message.includes("Forbidden") ? 403 : 500 });
+    const msg = error?.message || "Unknown error";
+    return NextResponse.json({ error: msg }, { status: msg.includes("Forbidden") ? 403 : 500 });
   }
 }
 
@@ -107,10 +108,11 @@ export async function POST(req: Request) {
       }
     });
   } catch (error: any) {
-    console.error("POST Users Error:", error);
+    console.error("POST Users Error details:", error.stack || error);
+    const msg = error?.message || "Unknown error";
     return NextResponse.json(
-      { error: error.message }, 
-      { status: error.message.includes("Forbidden") ? 403 : 500 }
+      { error: msg, stack: error?.stack || "No stack trace" }, 
+      { status: msg.includes("Forbidden") ? 403 : 500 }
     );
   }
 }

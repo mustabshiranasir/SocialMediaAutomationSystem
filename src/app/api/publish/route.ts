@@ -1,4 +1,4 @@
-import { NextResponse } from "next/response";
+import { NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
 import { publishToFacebook, publishToTwitter } from "@/lib/publishers";
 import { SocialAccountsData } from "@/lib/firestore";
