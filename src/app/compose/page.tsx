@@ -5,9 +5,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Send, CheckCircle2, Loader2, Image as ImageIcon, Link as LinkIcon, Hash } from "lucide-react";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
+import { createPendingPost } from "@/lib/firestore";
 
 export default function Compose() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const [content, setContent] = useState("");
   const [isPublishing, setIsPublishing] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -21,22 +22,34 @@ export default function Compose() {
     setSuccess(false);
 
     try {
-      const idToken = await user.getIdToken();
-      
-      const res = await fetch("/api/publish", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${idToken}`
-        },
-        body: JSON.stringify({ content, networks }),
-      });
+      if (role === "admin") {
+        const idToken = await user.getIdToken();
+        
+        const res = await fetch("/api/publish", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${idToken}`
+          },
+          body: JSON.stringify({ content, networks }),
+        });
 
-      if (res.ok) {
+        if (res.ok) {
+          setSuccess(true);
+          setContent("");
+        }
+      } else {
+        // Standard user: submit for approval
+        await createPendingPost({
+          content,
+          networks,
+          authorId: user.uid,
+          authorEmail: user.email || "Unknown"
+        });
         setSuccess(true);
         setContent("");
-        setTimeout(() => setSuccess(false), 5000);
       }
+      setTimeout(() => setSuccess(false), 5000);
     } catch (error) {
       console.error(error);
     } finally {
@@ -69,15 +82,16 @@ export default function Compose() {
       >
         <AnimatePresence>
           {success && (
-            <motion.div 
-              initial={{ opacity: 0, height: 0, mb: 0 }}
-              animate={{ opacity: 1, height: "auto", mb: 24 }}
-              exit={{ opacity: 0, height: 0, mb: 0 }}
-              className="overflow-hidden"
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="flex items-center gap-2 text-emerald-400 bg-emerald-500/10 px-4 py-3 rounded-xl mb-8"
             >
-              <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-medium flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5" /> Successfully published to selected networks!
-              </div>
+              <CheckCircle2 className="w-5 h-5" />
+              <span className="font-medium">
+                {role === "admin" ? "Published successfully!" : "Submitted for admin approval!"}
+              </span>
             </motion.div>
           )}
         </AnimatePresence>
@@ -141,27 +155,20 @@ export default function Compose() {
 
           <div className="flex justify-end pt-4">
             <motion.button
-              whileHover={!isPublishing && content.trim() !== "" ? { scale: 1.02 } : {}}
-              whileTap={!isPublishing && content.trim() !== "" ? { scale: 0.98 } : {}}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               type="submit"
-              disabled={isPublishing || content.trim() === ""}
-              className={`flex items-center gap-2 px-8 py-3.5 rounded-xl font-medium shadow-lg transition-all ${
-                isPublishing || content.trim() === ""
-                  ? "bg-primary/30 text-white/50 cursor-not-allowed"
-                  : "bg-primary text-primary-foreground hover:bg-blue-600 hover:shadow-blue-500/25 shadow-blue-500/20"
-              }`}
+              disabled={isPublishing || !content.trim()}
+              className="flex items-center gap-2 px-8 py-3 bg-primary hover:bg-blue-600 text-white rounded-xl font-medium shadow-lg shadow-blue-500/20 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {isPublishing ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Publishing...
-                </>
+                <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
-                <>
-                  <Send className="w-5 h-5" />
-                  Publish Now
-                </>
+                <Send className="w-5 h-5" />
               )}
+              {isPublishing 
+                ? (role === "admin" ? "Publishing..." : "Submitting...") 
+                : (role === "admin" ? "Publish Now" : "Submit for Approval")}
             </motion.button>
           </div>
         </form>

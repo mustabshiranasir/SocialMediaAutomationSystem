@@ -38,6 +38,10 @@ export async function POST(req: Request) {
     }
 
     const data = userDoc.data();
+    if (data?.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden - Admin access required" }, { status: 403 });
+    }
+    
     const socialAccounts = data?.socialAccounts as SocialAccountsData | undefined;
 
     if (!socialAccounts) {
