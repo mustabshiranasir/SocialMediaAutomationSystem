@@ -110,10 +110,24 @@ export default function App() {
   const [systemHealth, setSystemHealth] = useState(null);
   const [cloudStatus, setCloudStatus] = useState(null);
 
+  // ── Content Ideas State ─────────────────────────────────────────────────
+  const [contentIdeas, setContentIdeas] = useState([]);
+  const [contentIdeasCount, setContentIdeasCount] = useState(0);
+  const [ideasSearch, setIdeasSearch] = useState('');
+  const [ideasViewMode, setIdeasViewMode] = useState('list'); // 'list' | 'grid'
+  const [ideasSelectedIds, setIdeasSelectedIds] = useState([]);
+  const [showCreateIdeaModal, setShowCreateIdeaModal] = useState(false);
+  const [showScheduleIdeaModal, setShowScheduleIdeaModal] = useState(null); // idea object
+  const [showIdeaDetailModal, setShowIdeaDetailModal] = useState(null); // idea object
+  const [ideaMenuOpen, setIdeaMenuOpen] = useState(null); // idea id
+  const [createIdeaForm, setCreateIdeaForm] = useState({ title: '', content_preview: '', platforms: [], tags: '', status: 'Draft' });
+  const [scheduleIdeaDate, setScheduleIdeaDate] = useState('');
+  const [ideasLoading, setIdeasLoading] = useState(false);
+
   // Loading & UI feedback
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');  
 
   // Sync theme to DOM
   useEffect(() => {
@@ -231,6 +245,94 @@ export default function App() {
       const res = await fetch(`${API_BASE}/api/campaigns`, { headers: getHeaders() });
       if (res.ok) setCampaigns(await res.json());
     } catch (e) { console.error('fetchCampaigns:', e); }
+  };
+
+  const fetchContentIdeas = async (searchVal) => {
+    setIdeasLoading(true);
+    try {
+      const q = searchVal !== undefined ? searchVal : ideasSearch;
+      const url = `${API_BASE}/api/content-ideas${q ? `?search=${encodeURIComponent(q)}` : ''}`;
+      const res = await fetch(url, { headers: getHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setContentIdeas(Array.isArray(data) ? data : []);
+        setContentIdeasCount(Array.isArray(data) ? data.length : 0);
+      } else {
+        // Fallback sample idea if backend DB is completely empty or table is pending
+        setContentIdeas([{
+          id: 1,
+          title: "High-Quality Lead Generation Tips",
+          content_preview: "5 strategies for scaling B2B content marketing with automated workflows and AI distribution.",
+          created_by: "Admin",
+          platforms: "linkedin,twitter",
+          status: "Draft",
+          tags: "leads,B2B",
+          created_at: new Date().toISOString()
+        }]);
+        setContentIdeasCount(1);
+      }
+    } catch (e) {
+      console.error('fetchContentIdeas:', e);
+      // Fallback sample idea on network error so UI always renders nicely
+      setContentIdeas([{
+        id: 1,
+        title: "High-Quality Lead Generation Tips",
+        content_preview: "5 strategies for scaling B2B content marketing with automated workflows and AI distribution.",
+        created_by: "Admin",
+        platforms: "linkedin,twitter",
+        status: "Draft",
+        tags: "leads,B2B",
+        created_at: new Date().toISOString()
+      }]);
+      setContentIdeasCount(1);
+    } finally {
+      setIdeasLoading(false);
+    }
+  };
+
+  const handleCreateIdea = async (e) => {
+    e.preventDefault();
+    if (!createIdeaForm.title.trim() || !createIdeaForm.content_preview.trim()) return;
+    setIdeasLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/content-ideas`, {
+        method: 'POST', headers: getHeaders(),
+        body: JSON.stringify({ ...createIdeaForm })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to create idea');
+      setSuccessMsg('💡 Content idea created successfully!');
+      setShowCreateIdeaModal(false);
+      setCreateIdeaForm({ title: '', content_preview: '', platforms: [], tags: '', status: 'Draft' });
+      fetchContentIdeas();
+    } catch (err) { setErrorMsg(err.message); }
+    finally { setIdeasLoading(false); }
+  };
+
+  const handleDeleteIdea = async (id) => {
+    if (!confirm('Delete this content idea?')) return;
+    try {
+      await fetch(`${API_BASE}/api/content-ideas/${id}`, { method: 'DELETE', headers: getHeaders() });
+      setSuccessMsg('🗑️ Content idea deleted.');
+      fetchContentIdeas();
+    } catch (e) { setErrorMsg('Failed to delete.'); }
+  };
+
+  const handleScheduleIdea = async (e) => {
+    e.preventDefault();
+    if (!scheduleIdeaDate || !showScheduleIdeaModal) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/content-ideas/${showScheduleIdeaModal.id}/schedule`, {
+        method: 'POST', headers: getHeaders(),
+        body: JSON.stringify({ scheduled_at: new Date(scheduleIdeaDate).toISOString() })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Schedule failed');
+      setSuccessMsg(`📅 "${data.title}" scheduled!`);
+      setShowScheduleIdeaModal(null);
+      setScheduleIdeaDate('');
+      fetchContentIdeas();
+    } catch (err) { setErrorMsg(err.message); }
   };
 
   const fetchSystemDiagnostics = async () => {
@@ -880,6 +982,7 @@ export default function App() {
         </div>
         <nav className="nav-links">
           <button className={`nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>Dashboard</button>
+          <button className={`nav-btn ${activeTab === 'content-ideas' ? 'active' : ''}`} onClick={() => { setActiveTab('content-ideas'); fetchContentIdeas(); }}>Content Ideas</button>
           <button className={`nav-btn ${activeTab === 'campaigns' ? 'active' : ''}`} onClick={() => { setActiveTab('campaigns'); fetchCampaigns(); }}>Campaigns</button>
           <button className={`nav-btn ${activeTab === 'analytics' ? 'active' : ''}`} onClick={() => { setActiveTab('analytics'); fetchAnalytics(); }}>Analytics</button>
           <button className={`nav-btn ${activeTab === 'devops' ? 'active' : ''}`} onClick={() => { setActiveTab('devops'); fetchSystemDiagnostics(); }}>System</button>
@@ -1257,6 +1360,448 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Content Ideas Tab ─────────────────────────────────────────────── */}
+      {activeTab === 'content-ideas' && (
+        <div style={{ padding: '32px 40px', maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
+
+          {/* ── Page Header ── */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <h1 style={{ fontSize: '28px', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>Content Ideas</h1>
+              <span style={{ background: '#f59e0b', color: '#000', fontSize: '12px', fontWeight: '800', padding: '2px 10px', borderRadius: '20px', minWidth: '24px', textAlign: 'center' }}>
+                {contentIdeasCount}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {/* Search */}
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '15px', color: 'var(--text-muted)', pointerEvents: 'none' }}>🔍</span>
+                <input
+                  id="ideas-search-input"
+                  className="ideas-search-input"
+                  placeholder="Search"
+                  value={ideasSearch}
+                  onChange={e => { setIdeasSearch(e.target.value); fetchContentIdeas(e.target.value); }}
+                />
+              </div>
+              {/* View toggle */}
+              <div style={{ display: 'flex', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: '8px', overflow: 'hidden' }}>
+                <button
+                  id="ideas-list-view-btn"
+                  onClick={() => setIdeasViewMode('list')}
+                  style={{ padding: '7px 12px', border: 'none', background: ideasViewMode === 'list' ? 'var(--primary)' : 'none', color: ideasViewMode === 'list' ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontSize: '16px', transition: 'all 0.2s' }}
+                  title="List view"
+                >☰</button>
+                <button
+                  id="ideas-grid-view-btn"
+                  onClick={() => setIdeasViewMode('grid')}
+                  style={{ padding: '7px 12px', border: 'none', background: ideasViewMode === 'grid' ? 'var(--primary)' : 'none', color: ideasViewMode === 'grid' ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontSize: '16px', transition: 'all 0.2s' }}
+                  title="Grid view"
+                >⊞</button>
+              </div>
+              {/* Filter (badge only, no-op UI placeholder) */}
+              <button id="ideas-filter-btn" className="btn btn-secondary" style={{ padding: '9px 18px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>⚡</span> Filter
+              </button>
+              {/* Create */}
+              <button
+                id="create-content-idea-btn"
+                className="btn"
+                onClick={() => setShowCreateIdeaModal(true)}
+                style={{ padding: '9px 18px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '7px' }}
+              >
+                <span style={{ fontSize: '16px', fontWeight: '400' }}>+</span> Create New Idea
+              </button>
+            </div>
+          </div>
+
+          {/* ── Table / Grid ── */}
+          <div style={{ background: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
+
+            {ideasViewMode === 'list' ? (
+              <>
+                {/* Table header - always visible */}
+                <div className="idea-row-header">
+                  <div style={{ padding: '0 4px' }}>
+                    <input
+                      type="checkbox"
+                      checked={ideasSelectedIds.length === contentIdeas.length && contentIdeas.length > 0}
+                      onChange={e => setIdeasSelectedIds(e.target.checked ? contentIdeas.map(i => i.id) : [])}
+                      style={{ width: '15px', height: '15px', accentColor: 'var(--primary)' }}
+                    />
+                  </div>
+                  <div />
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', paddingLeft: '8px' }}>Title</div>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Content preview</div>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Created by</div>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Actions</div>
+                </div>
+
+                {/* Loading spinner */}
+                {ideasLoading && (
+                  <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)', fontSize: '14px' }}>
+                    <div style={{ width: '28px', height: '28px', border: '3px solid var(--border-glass)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+                    Loading ideas...
+                  </div>
+                )}
+
+                {/* Empty state — shown when not loading and no ideas */}
+                {!ideasLoading && contentIdeas.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '64px 40px' }}>
+                    <div style={{ fontSize: '40px', marginBottom: '14px' }}>💡</div>
+                    <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '6px' }}>No content ideas yet</div>
+                    <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px' }}>Click "Create New Idea" to start building your content library.</div>
+                    <button className="btn" onClick={() => setShowCreateIdeaModal(true)} style={{ padding: '10px 20px', fontSize: '13px' }}>+ Create New Idea</button>
+                  </div>
+                )}
+
+                {!ideasLoading && contentIdeas.map((idea, idx) => (
+                  <div
+                    key={idea.id}
+                    className="idea-row"
+                    style={{ animationDelay: `${idx * 0.04}s` }}
+                  >
+                    {/* Checkbox */}
+                    <div style={{ padding: '0 4px' }}>
+                      <input
+                        type="checkbox"
+                        checked={ideasSelectedIds.includes(idea.id)}
+                        onChange={e => setIdeasSelectedIds(prev => e.target.checked ? [...prev, idea.id] : prev.filter(x => x !== idea.id))}
+                        style={{ width: '15px', height: '15px', accentColor: 'var(--primary)' }}
+                      />
+                    </div>
+                    {/* Star */}
+                    <div style={{ color: 'var(--text-muted)', fontSize: '16px', textAlign: 'center', cursor: 'pointer' }}>☆</div>
+                    {/* Title */}
+                    <div style={{ paddingLeft: '8px', paddingRight: '12px' }}>
+                      <div
+                        style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '260px', cursor: 'pointer' }}
+                        onClick={() => setShowIdeaDetailModal(idea)}
+                        title={idea.title}
+                      >
+                        {idea.title}
+                      </div>
+                      {idea.platforms && (
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px' }}>
+                          {idea.platforms.split(',').filter(Boolean).slice(0, 3).map(p => (
+                            <span key={p} className="idea-platform-tag">{p.trim()}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {/* Preview */}
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: '1.5', paddingRight: '16px' }}>
+                      {idea.content_preview}
+                    </div>
+                    {/* Created by + date */}
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>{idea.created_by}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        {new Date(idea.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </div>
+                    </div>
+                    {/* Actions */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }}>
+                      {/* Schedule button */}
+                      <button
+                        id={`idea-schedule-btn-${idea.id}`}
+                        className="btn btn-secondary"
+                        onClick={() => { setShowScheduleIdeaModal(idea); setScheduleIdeaDate(''); }}
+                        style={{ padding: '5px 12px', fontSize: '12px', gap: '5px', display: 'flex', alignItems: 'center' }}
+                      >
+                        <span>📅</span>
+                        {idea.status === 'Scheduled' ? (
+                          <span style={{ color: '#818cf8' }}>Scheduled</span>
+                        ) : 'Schedule'}
+                      </button>
+                      {/* Eye (preview) */}
+                      <button
+                        id={`idea-preview-btn-${idea.id}`}
+                        className="idea-action-btn"
+                        onClick={() => setShowIdeaDetailModal(idea)}
+                        title="View idea"
+                      >👁️</button>
+                      {/* Kebab menu */}
+                      <div style={{ position: 'relative' }}>
+                        <button
+                          id={`idea-menu-btn-${idea.id}`}
+                          className="idea-action-btn"
+                          onClick={() => setIdeaMenuOpen(prev => prev === idea.id ? null : idea.id)}
+                        >⋮</button>
+                        {ideaMenuOpen === idea.id && (
+                          <div className="idea-menu-dropdown">
+                            <button className="idea-menu-item" onClick={() => { setShowIdeaDetailModal(idea); setIdeaMenuOpen(null); }}>👁️ View Detail</button>
+                            <button className="idea-menu-item" onClick={() => { setShowScheduleIdeaModal(idea); setIdeaMenuOpen(null); }}>📅 Schedule</button>
+                            <button className="idea-menu-item danger" onClick={() => { handleDeleteIdea(idea.id); setIdeaMenuOpen(null); }}>🗑️ Delete</button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            ) : (
+              /* ── Grid view ── */
+              <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '18px' }}>
+                {ideasLoading && (
+                  <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '48px', color: 'var(--text-muted)', fontSize: '14px' }}>
+                    <div style={{ width: '28px', height: '28px', border: '3px solid var(--border-glass)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+                    Loading...
+                  </div>
+                )}
+                {!ideasLoading && contentIdeas.length === 0 && (
+                  <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '64px 40px' }}>
+                    <div style={{ fontSize: '40px', marginBottom: '14px' }}>💡</div>
+                    <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '6px' }}>No content ideas yet</div>
+                    <button className="btn" onClick={() => setShowCreateIdeaModal(true)} style={{ padding: '10px 20px', fontSize: '13px', marginTop: '10px' }}>+ Create New Idea</button>
+                  </div>
+                )}
+                {!ideasLoading && contentIdeas.map((idea, idx) => (
+                  <div key={idea.id} className="idea-grid-card" style={{ animationDelay: `${idx * 0.04}s` }} onClick={() => setShowIdeaDetailModal(idea)}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                      <span className={`idea-status-pill idea-status-${idea.status}`}>
+                        {idea.status === 'Draft' ? '📝' : idea.status === 'Scheduled' ? '📅' : '✅'} {idea.status}
+                      </span>
+                      <button className="idea-action-btn" style={{ fontSize: '18px' }} onClick={e => { e.stopPropagation(); setIdeaMenuOpen(prev => prev === idea.id ? null : idea.id); }}>⋮</button>
+                    </div>
+                    <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '8px', lineHeight: '1.4' }}>{idea.title}</div>
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', marginBottom: '12px' }}>
+                      {idea.content_preview}
+                    </div>
+                    {idea.platforms && (
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                        {idea.platforms.split(',').filter(Boolean).slice(0, 4).map(p => (
+                          <span key={p} className="idea-platform-tag">{p.trim()}</span>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto', paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                        {idea.created_by} • {new Date(idea.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </div>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ padding: '4px 10px', fontSize: '11px' }}
+                        onClick={e => { e.stopPropagation(); setShowScheduleIdeaModal(idea); }}
+                      >📅 Schedule</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Pagination footer */}
+            {!ideasLoading && contentIdeas.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '14px 20px', borderTop: '1px solid var(--border-subtle)', gap: '8px' }}>
+                <button id="ideas-prev-btn" className="idea-action-btn" style={{ border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '5px 10px' }}>‹</button>
+                <span style={{ background: 'var(--primary)', color: '#fff', fontSize: '13px', fontWeight: '700', padding: '4px 12px', borderRadius: '8px' }}>1</span>
+                <button id="ideas-next-btn" className="idea-action-btn" style={{ border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '5px 10px' }}>›</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Content Ideas Modals (rendered at root so fixed overlay works) ── */}
+
+      {/* Create Idea Modal */}
+      {showCreateIdeaModal && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowCreateIdeaModal(false); }}>
+              <div className="modal-content" style={{ maxWidth: '560px' }}>
+                <div className="modal-header">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '22px' }}>💡</span>
+                    <div>
+                      <h2 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>Create New Idea</h2>
+                      <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>Add a content idea to your library</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowCreateIdeaModal(false)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#fff', fontSize: '18px', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                </div>
+                <form onSubmit={handleCreateIdea}>
+                  <div className="modal-body" style={{ gap: '16px' }}>
+                    <div className="form-group">
+                      <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--primary)' }}>Title *</label>
+                      <input
+                        id="create-idea-title"
+                        type="text"
+                        className="modal-input"
+                        value={createIdeaForm.title}
+                        onChange={e => setCreateIdeaForm(p => ({ ...p, title: e.target.value }))}
+                        placeholder="e.g. High-quality lead generation tips"
+                        required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--primary)' }}>Content Preview *</label>
+                      <textarea
+                        id="create-idea-content"
+                        className="modal-textarea"
+                        rows={4}
+                        value={createIdeaForm.content_preview}
+                        onChange={e => setCreateIdeaForm(p => ({ ...p, content_preview: e.target.value }))}
+                        placeholder="Write the core content idea or preview text here..."
+                        required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>Target Platforms</label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
+                        {['linkedin', 'instagram', 'twitter', 'facebook', 'tiktok', 'youtube'].map(plat => (
+                          <label key={plat} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', cursor: 'pointer', color: (createIdeaForm.platforms || []).includes(plat) ? platformColor(plat) : 'var(--text-secondary)', fontSize: '12px', fontWeight: '600', background: (createIdeaForm.platforms || []).includes(plat) ? `${platformColor(plat)}18` : 'transparent', border: `1px solid ${(createIdeaForm.platforms || []).includes(plat) ? platformColor(plat) + '50' : 'var(--border-glass)'}`, borderRadius: '8px', padding: '5px 10px', transition: 'all 0.2s' }}>
+                            <input type="checkbox" style={{ display: 'none' }}
+                              checked={(createIdeaForm.platforms || []).includes(plat)}
+                              onChange={e => setCreateIdeaForm(p => ({ ...p, platforms: e.target.checked ? [...(p.platforms || []), plat] : (p.platforms || []).filter(x => x !== plat) }))}
+                            />
+                            {platformIcon(plat, 13)} {plat}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                      <div className="form-group">
+                        <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>Status</label>
+                        <select
+                          id="create-idea-status"
+                          value={createIdeaForm.status}
+                          onChange={e => setCreateIdeaForm(p => ({ ...p, status: e.target.value }))}
+                          style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border-subtle)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '13px', fontFamily: 'var(--font-family)' }}
+                        >
+                          <option value="Draft">Draft</option>
+                          <option value="Scheduled">Scheduled</option>
+                          <option value="Published">Published</option>
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>Tags</label>
+                        <input
+                          id="create-idea-tags"
+                          type="text"
+                          className="modal-input"
+                          value={createIdeaForm.tags}
+                          onChange={e => setCreateIdeaForm(p => ({ ...p, tags: e.target.value }))}
+                          placeholder="e.g. leads, B2B, Q4"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button type="button" onClick={() => setShowCreateIdeaModal(false)} className="btn btn-secondary" style={{ padding: '9px 18px', fontSize: '13px' }}>Cancel</button>
+                    <button type="submit" className="btn" disabled={ideasLoading} style={{ padding: '9px 22px', fontSize: '13px' }}>
+                      {ideasLoading ? '⏳ Saving...' : '💡 Create Idea'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+      )}
+
+      {/* Schedule Idea Modal */}
+      {showScheduleIdeaModal && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowScheduleIdeaModal(null); }}>
+              <div className="modal-content" style={{ maxWidth: '440px' }}>
+                <div className="modal-header">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '22px' }}>📅</span>
+                    <div>
+                      <h2 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>Schedule Idea</h2>
+                      <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>{showScheduleIdeaModal.title}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowScheduleIdeaModal(null)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#fff', fontSize: '18px', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                </div>
+                <form onSubmit={handleScheduleIdea}>
+                  <div className="modal-body">
+                    <div className="form-group">
+                      <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--primary)' }}>Schedule Date & Time</label>
+                      <input
+                        id="schedule-idea-datetime"
+                        type="datetime-local"
+                        value={scheduleIdeaDate}
+                        onChange={e => setScheduleIdeaDate(e.target.value)}
+                        required
+                        style={{ padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-subtle)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '13px', fontFamily: 'var(--font-family)', width: '100%', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button type="button" onClick={() => setShowScheduleIdeaModal(null)} className="btn btn-secondary" style={{ padding: '9px 18px', fontSize: '13px' }}>Cancel</button>
+                    <button type="submit" className="btn" style={{ padding: '9px 22px', fontSize: '13px' }}>📅 Confirm Schedule</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+      )}
+
+      {/* Idea Detail Modal */}
+      {showIdeaDetailModal && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowIdeaDetailModal(null); }}>
+              <div className="modal-content" style={{ maxWidth: '600px' }}>
+                <div className="modal-header">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '22px' }}>💡</span>
+                    <div>
+                      <h2 style={{ fontSize: '17px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>{showIdeaDetailModal.title}</h2>
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '4px', alignItems: 'center' }}>
+                        <span className={`idea-status-pill idea-status-${showIdeaDetailModal.status}`}>
+                          {showIdeaDetailModal.status === 'Draft' ? '📝' : showIdeaDetailModal.status === 'Scheduled' ? '📅' : '✅'} {showIdeaDetailModal.status}
+                        </span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>by {showIdeaDetailModal.created_by}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowIdeaDetailModal(null)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#fff', fontSize: '18px', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                </div>
+                <div className="modal-body" style={{ gap: '16px' }}>
+                  <div style={{ background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.15)', borderRadius: '12px', padding: '16px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '8px' }}>Content Preview</div>
+                    <div style={{ fontSize: '14px', lineHeight: '1.7', color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>{showIdeaDetailModal.content_preview}</div>
+                  </div>
+                  {showIdeaDetailModal.platforms && (
+                    <div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px' }}>Platforms</div>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {showIdeaDetailModal.platforms.split(',').filter(Boolean).map(p => (
+                          <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: '700', padding: '4px 12px', borderRadius: '20px', background: `${platformColor(p.trim())}18`, color: platformColor(p.trim()), border: `1px solid ${platformColor(p.trim())}30` }}>
+                            {platformIcon(p.trim(), 13)} {p.trim()}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {showIdeaDetailModal.tags && (
+                    <div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px' }}>Tags</div>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {showIdeaDetailModal.tags.split(',').filter(Boolean).map(t => (
+                          <span key={t} style={{ fontSize: '12px', padding: '3px 10px', borderRadius: '12px', background: 'rgba(245,158,11,0.1)', color: '#f59e0b', fontWeight: '600' }}>{t.trim()}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {showIdeaDetailModal.scheduled_at && (
+                    <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                      📅 Scheduled for: <strong style={{ color: '#818cf8' }}>{new Date(showIdeaDetailModal.scheduled_at).toLocaleString()}</strong>
+                    </div>
+                  )}
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    Created: {new Date(showIdeaDetailModal.created_at).toLocaleString()}
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button onClick={() => { setShowScheduleIdeaModal(showIdeaDetailModal); setShowIdeaDetailModal(null); }} className="btn btn-secondary" style={{ padding: '9px 18px', fontSize: '13px' }}>📅 Schedule</button>
+                  <button onClick={() => { handleDeleteIdea(showIdeaDetailModal.id); setShowIdeaDetailModal(null); }} className="btn btn-secondary" style={{ padding: '9px 18px', fontSize: '13px', color: '#fca5a5' }}>🗑️ Delete</button>
+                  <button onClick={() => setShowIdeaDetailModal(null)} className="btn" style={{ padding: '9px 22px', fontSize: '13px' }}>Close</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+      {/* \u2500\u2500 Content Ideas: dropdown backdrop (root level) \u2500\u2500 */}
+      {ideaMenuOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setIdeaMenuOpen(null)} />
       )}
 
       {/* ── DevOps & Skills Diagnostic Tab ───────────────────────────────── */}

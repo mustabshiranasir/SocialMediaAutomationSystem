@@ -323,6 +323,49 @@ input::placeholder, textarea::placeholder {
 
 .modal-body {
   padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-family);
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+
+.modal-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+.modal-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-family);
+  outline: none;
+  box-sizing: border-box;
+  resize: vertical;
+  line-height: 1.6;
+  transition: border-color 0.2s;
+}
+
+.modal-textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
 }
 
 .modal-footer {
@@ -445,3 +488,131 @@ input::placeholder, textarea::placeholder {
   margin: 0 auto;
   width: 100%;
 }
+
+/* ── Content Ideas Tab ──────────────────────────────────────── */
+@keyframes ideaRowIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.idea-row {
+  animation: ideaRowIn 0.25s ease both;
+  display: grid;
+  grid-template-columns: 36px 36px 1fr 1.2fr 1fr auto;
+  align-items: center;
+  gap: 0;
+  padding: 0 20px;
+  min-height: 64px;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.15s;
+  cursor: default;
+}
+.idea-row:hover { background: rgba(99, 102, 241, 0.04); }
+
+.idea-row-header {
+  display: grid;
+  grid-template-columns: 36px 36px 1fr 1.2fr 1fr auto;
+  align-items: center;
+  gap: 0;
+  padding: 0 20px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.idea-grid-card {
+  border-radius: 14px;
+  border: 1px solid var(--border-subtle);
+  padding: 20px;
+  background: var(--bg-secondary);
+  transition: all 0.2s;
+  cursor: pointer;
+}
+.idea-grid-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.12);
+  transform: translateY(-2px);
+}
+
+.idea-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+.idea-status-Draft     { background: rgba(100, 116, 139, 0.12); color: #94a3b8; }
+.idea-status-Scheduled { background: rgba(99,  102, 241, 0.12); color: #818cf8; }
+.idea-status-Published { background: rgba(16,  185, 129, 0.12); color: #34d399; }
+
+.idea-action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  transition: background 0.15s;
+}
+.idea-action-btn:hover { background: rgba(99, 102, 241, 0.1); color: var(--primary); }
+
+.idea-menu-dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 6px;
+  min-width: 160px;
+  z-index: 200;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.idea-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: background 0.15s;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+.idea-menu-item:hover       { background: rgba(99,  102, 241, 0.1); color: var(--text-primary); }
+.idea-menu-item.danger:hover { background: rgba(239, 68,  68,  0.1); color: #fca5a5; }
+
+.ideas-search-input {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 9px 16px 9px 38px;
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+  width: 260px;
+  transition: border 0.2s;
+  font-family: var(--font-family);
+}
+.ideas-search-input:focus { border-color: var(--primary); }
+
+.idea-platform-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 8px;
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--primary);
+  text-transform: uppercase;
+}
+

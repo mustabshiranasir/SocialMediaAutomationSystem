@@ -4,13 +4,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from .database import engine, Base
-from .routers import auth, drafts, accounts, analytics, campaigns, oauth
+from .routers import auth, drafts, accounts, analytics, campaigns, oauth, content_ideas
+from .routers.content_ideas import ContentIdea  # noqa: F401 – ensures model is registered before create_all
 from .skills.cloud_deployment import get_cloud_deployment_status
 from .skills.devops_tooling import run_system_health_audit
 
 from sqlalchemy import inspect, text
 
-# Create SQLite tables on startup
+# Create SQLite tables on startup (must run AFTER all models are imported)
 Base.metadata.create_all(bind=engine)
 
 # Auto-migrate SQLite columns if table was created previously without new fields
@@ -28,6 +29,17 @@ def run_db_migrations():
                 conn.execute(text("ALTER TABLE drafts ADD COLUMN campaign_id INTEGER REFERENCES campaigns(id)"))
             if "scheduled_at" not in columns:
                 conn.execute(text("ALTER TABLE drafts ADD COLUMN scheduled_at DATETIME"))
+            conn.commit()
+        if "content_ideas" in inspector.get_table_names():
+            columns = [c["name"] for c in inspector.get_columns("content_ideas")]
+            if "media_url" not in columns:
+                conn.execute(text("ALTER TABLE content_ideas ADD COLUMN media_url TEXT"))
+            if "link_url" not in columns:
+                conn.execute(text("ALTER TABLE content_ideas ADD COLUMN link_url TEXT"))
+            if "first_comment" not in columns:
+                conn.execute(text("ALTER TABLE content_ideas ADD COLUMN first_comment TEXT"))
+            if "is_starred" not in columns:
+                conn.execute(text("ALTER TABLE content_ideas ADD COLUMN is_starred BOOLEAN DEFAULT 0"))
             conn.commit()
 
 run_db_migrations()
@@ -62,6 +74,7 @@ app.include_router(accounts.router)
 app.include_router(analytics.router)
 app.include_router(campaigns.router)
 app.include_router(oauth.router)
+app.include_router(content_ideas.router)
 
 @app.get("/")
 def read_root():

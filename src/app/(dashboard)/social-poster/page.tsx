@@ -38,6 +38,7 @@ import {
   SendHorizonal,
   Link2,
   ExternalLink as ExtLink,
+  Eye,
 } from "lucide-react";
 import { getAllPosts, getChannels, addChannel, Post, Channel } from "@/lib/firestore";
 import Image from "next/image";
@@ -1140,6 +1141,11 @@ export default function SocialPosterPage() {
               </div>
             </motion.div>
           )}
+
+          {/* Content Ideas Tab */}
+          {activeTab === "Content Ideas" && (
+            <ContentIdeasTabSection onScheduleToChannels={() => setIsAddChannelModalOpen(true)} />
+          )}
         </AnimatePresence>
       </div>
 
@@ -2010,5 +2016,643 @@ function PostCard({
         </div>
       </div>
     </div>
+  );
+}
+
+function ContentIdeasTabSection({ onScheduleToChannels }: { onScheduleToChannels?: () => void }) {
+  const [ideas, setIdeas] = useState<any[]>([]);
+  const [ideasCount, setIdeasCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [previewIdeaModal, setPreviewIdeaModal] = useState<any | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [formTitle, setFormTitle] = useState("");
+  const [formContent, setFormContent] = useState("");
+  const [formPlatforms, setFormPlatforms] = useState<string[]>(["linkedin", "twitter"]);
+  const [formStatus, setFormStatus] = useState("Draft");
+  const [formTags, setFormTags] = useState("");
+  const [formLinkUrl, setFormLinkUrl] = useState("");
+  const [formFirstComment, setFormFirstComment] = useState("");
+  const [formIsStarred, setFormIsStarred] = useState(false);
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string>("");
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const fetchIdeas = async (searchQuery?: string) => {
+    setLoading(true);
+    try {
+      const q = searchQuery !== undefined ? searchQuery : search;
+      const res = await fetch(`http://localhost:8000/api/content-ideas${q ? `?search=${encodeURIComponent(q)}` : ''}`);
+      if (res.ok) {
+        const data = await res.json();
+        setIdeas(Array.isArray(data) ? data : []);
+        setIdeasCount(Array.isArray(data) ? data.length : 0);
+      } else {
+        setIdeas([]);
+        setIdeasCount(0);
+      }
+    } catch (e) {
+      console.error("fetchIdeas error:", e);
+      setIdeas([]);
+      setIdeasCount(0);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchIdeas();
+  }, []);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setMediaFile(file);
+      setMediaPreviewUrl(URL.createObjectURL(file));
+    }
+  };
+
+  const handleCreateIdea = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formTitle.trim() || !formContent.trim()) return;
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("http://localhost:8000/api/content-ideas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: formTitle,
+          content_preview: formContent,
+          platforms: formPlatforms,
+          status: formStatus,
+          tags: formTags,
+          link_url: formLinkUrl,
+          first_comment: formFirstComment,
+          is_starred: formIsStarred,
+          media_url: mediaPreviewUrl || ""
+        })
+      });
+
+      if (res.ok) {
+        setIsCreateModalOpen(false);
+        setFormTitle("");
+        setFormContent("");
+        setFormTags("");
+        setFormLinkUrl("");
+        setFormFirstComment("");
+        setFormIsStarred(false);
+        setMediaFile(null);
+        setMediaPreviewUrl("");
+        fetchIdeas();
+      } else {
+        alert("Failed to create idea. Please check backend API.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error creating idea.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const toggleStar = async (idea: any, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      const newStarred = !idea.is_starred;
+      await fetch(`http://localhost:8000/api/content-ideas/${idea.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_starred: newStarred })
+      });
+      fetchIdeas();
+      if (previewIdeaModal && previewIdeaModal.id === idea.id) {
+        setPreviewIdeaModal({ ...previewIdeaModal, is_starred: newStarred });
+      }
+    } catch (e) {
+      console.error("Star toggle error:", e);
+    }
+  };
+
+  const handleDeleteIdea = async (id: number) => {
+    if (!confirm("Are you sure you want to delete this content idea?")) return;
+    try {
+      const res = await fetch(`http://localhost:8000/api/content-ideas/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        if (previewIdeaModal?.id === id) setPreviewIdeaModal(null);
+        fetchIdeas();
+      }
+    } catch (e) {
+      console.error("Delete error:", e);
+    }
+  };
+
+  return (
+    <motion.div
+      key="content-ideas-view"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      className="flex flex-col gap-6"
+    >
+      {/* Header Controls - Exact Reference 1 layout */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-slate-800">Content Ideas</h1>
+          <span className="bg-[#facc15] text-slate-900 font-extrabold text-xs px-2.5 py-0.5 rounded-full">
+            {ideasCount}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* View Mode Toggle */}
+          <div className="flex border border-slate-200 rounded-lg overflow-hidden bg-white p-0.5 shadow-sm">
+            <button
+              onClick={() => setViewMode("list")}
+              className={`p-1.5 rounded text-slate-600 transition-colors ${viewMode === "list" ? "bg-slate-100 font-bold" : "hover:bg-slate-50"}`}
+              title="List view"
+            >
+              <ListIcon className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewMode("grid")}
+              className={`p-1.5 rounded text-slate-600 transition-colors ${viewMode === "grid" ? "bg-slate-100 font-bold" : "hover:bg-slate-50"}`}
+              title="Grid view"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Search Bar */}
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                fetchIdeas(e.target.value);
+              }}
+              className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:border-indigo-500 w-64 shadow-sm"
+            />
+          </div>
+
+          {/* Filter */}
+          <button className="flex items-center gap-2 border border-slate-200 bg-white text-slate-700 font-medium text-sm px-4 py-2 rounded-lg shadow-sm hover:bg-slate-50 transition-colors">
+            <Filter className="w-4 h-4" />
+            Filter
+          </button>
+
+          {/* Create Button */}
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="flex items-center gap-2 bg-[#635BFF] hover:bg-[#5249e6] text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            Create New Idea
+          </button>
+        </div>
+      </div>
+
+      {/* Loading state */}
+      {loading && (
+        <div className="p-12 text-center text-slate-400">
+          <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+          Loading content ideas from server...
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!loading && ideas.length === 0 && (
+        <div className="bg-white border border-slate-200 rounded-xl p-12 text-center flex flex-col items-center justify-center shadow-sm">
+          <div className="text-4xl mb-3">💡</div>
+          <h3 className="text-lg font-bold text-slate-800 mb-1">No content ideas found</h3>
+          <p className="text-sm text-slate-500 max-w-sm mb-5">
+            Your library is empty. Click "Create New Idea" above to add your first post idea.
+          </p>
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="bg-[#635BFF] text-white font-medium text-sm px-4 py-2 rounded-lg hover:bg-[#5249e6] transition-colors"
+          >
+            + Create New Idea
+          </button>
+        </div>
+      )}
+
+      {/* Table List View - Reference 1 Design */}
+      {!loading && ideas.length > 0 && viewMode === "list" && (
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-100 text-xs font-semibold text-slate-400 bg-white">
+                <th className="py-4 px-4 w-10">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.length === ideas.length && ideas.length > 0}
+                    onChange={(e) => setSelectedIds(e.target.checked ? ideas.map(i => i.id) : [])}
+                    className="rounded border-slate-300"
+                  />
+                </th>
+                <th className="py-4 px-4 font-semibold text-slate-500">Title</th>
+                <th className="py-4 px-4 font-semibold text-slate-500">Content preview</th>
+                <th className="py-4 px-4 font-semibold text-slate-500">Created by</th>
+                <th className="py-4 px-4 font-semibold text-slate-500 text-right pr-8">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-sm">
+              {ideas.map((idea) => (
+                <tr key={idea.id} className="hover:bg-slate-50/80 transition-colors group">
+                  <td className="py-4 px-4">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(idea.id)}
+                      onChange={(e) => setSelectedIds(prev => e.target.checked ? [...prev, idea.id] : prev.filter(x => x !== idea.id))}
+                      className="rounded border-slate-300"
+                    />
+                  </td>
+                  <td className="py-4 px-4">
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={(e) => toggleStar(idea, e)}
+                        className={`text-base transition-transform hover:scale-125 ${idea.is_starred ? 'text-amber-400' : 'text-slate-300 hover:text-amber-400'}`}
+                      >
+                        {idea.is_starred ? '★' : '☆'}
+                      </button>
+                      <span
+                        onClick={() => setPreviewIdeaModal(idea)}
+                        className="font-bold text-slate-800 hover:text-indigo-600 cursor-pointer truncate max-w-[200px]"
+                      >
+                        {idea.title}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="py-4 px-4">
+                    <p
+                      onClick={() => setPreviewIdeaModal(idea)}
+                      className="text-slate-600 cursor-pointer line-clamp-1 max-w-md"
+                    >
+                      {idea.content_preview}
+                    </p>
+                  </td>
+                  <td className="py-4 px-4">
+                    <div className="text-xs">
+                      <div className="font-semibold text-slate-700">{idea.created_by || "qxjFFtL4kY"}</div>
+                      <div className="text-slate-400">
+                        {new Date(idea.created_at).toLocaleDateString("en-GB", { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="py-4 px-4 text-right pr-6">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => {
+                          if (onScheduleToChannels) onScheduleToChannels();
+                          else alert("Directing to Channels selection...");
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-semibold text-xs transition-colors"
+                      >
+                        Schedule <CalendarIcon className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setPreviewIdeaModal(idea)}
+                        className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+                        title="Preview idea"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteIdea(idea.id)}
+                        className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                        title="Delete idea"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/* Pagination */}
+          <div className="p-4 border-t border-slate-100 flex items-center justify-end gap-2 text-xs font-semibold text-slate-600 bg-white">
+            <button className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-40">‹</button>
+            <span className="w-7 h-7 flex items-center justify-center rounded bg-slate-100 text-slate-800">1</span>
+            <button className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-40">›</button>
+          </div>
+        </div>
+      )}
+
+      {/* Ideas Grid View */}
+      {!loading && ideas.length > 0 && viewMode === "grid" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {ideas.map((idea) => (
+            <div key={idea.id} className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between relative group">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                    idea.status === 'Draft' ? 'bg-slate-100 text-slate-600 border-slate-200' :
+                    idea.status === 'Scheduled' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
+                    'bg-emerald-50 text-emerald-600 border-emerald-100'
+                  }`}>
+                    {idea.status}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => toggleStar(idea, e)}
+                      className={`text-base transition-transform hover:scale-125 ${idea.is_starred ? 'text-amber-400' : 'text-slate-300 hover:text-amber-400'}`}
+                      title={idea.is_starred ? 'Starred' : 'Star idea'}
+                    >
+                      {idea.is_starred ? '★' : '☆'}
+                    </button>
+                  </div>
+                </div>
+                <h3 onClick={() => setPreviewIdeaModal(idea)} className="font-bold text-slate-800 text-base mb-2 cursor-pointer hover:text-indigo-600">{idea.title}</h3>
+                <p onClick={() => setPreviewIdeaModal(idea)} className="text-slate-600 text-sm line-clamp-3 mb-3 leading-relaxed cursor-pointer">
+                  {idea.content_preview}
+                </p>
+
+                {idea.media_url && (
+                  <div className="mb-3 rounded-lg overflow-hidden border border-slate-100 h-28 bg-slate-50 flex items-center justify-center">
+                    <img src={idea.media_url} alt="Media" className="w-full h-full object-cover" />
+                  </div>
+                )}
+              </div>
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                <span>By {idea.created_by || "Admin"}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      if (onScheduleToChannels) onScheduleToChannels();
+                      else alert("Directing to Channels selection...");
+                    }}
+                    className="text-indigo-600 hover:underline font-semibold flex items-center gap-1"
+                  >
+                    Schedule <CalendarIcon className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Preview Detail Modal - Exact Reference 3 Design */}
+      {previewIdeaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-100">
+            {/* Header with star & close */}
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={(e) => toggleStar(previewIdeaModal, e)}
+                  className={`text-xl transition-transform hover:scale-125 ${previewIdeaModal.is_starred ? 'text-amber-400' : 'text-slate-300 hover:text-amber-400'}`}
+                >
+                  {previewIdeaModal.is_starred ? '★' : '☆'}
+                </button>
+                <h2 className="font-bold text-slate-900 text-lg truncate max-w-md">
+                  {previewIdeaModal.title}
+                </h2>
+              </div>
+              <button
+                onClick={() => setPreviewIdeaModal(null)}
+                className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-lg hover:bg-slate-50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Scrollable Preview Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {/* Content text */}
+              <div className="bg-slate-50/60 border border-slate-100 rounded-xl p-4 text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">
+                {previewIdeaModal.content_preview}
+              </div>
+
+              {/* Media Block */}
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Media</label>
+                {previewIdeaModal.media_url ? (
+                  <div className="w-24 h-24 rounded-xl border border-slate-200 overflow-hidden bg-slate-100 flex items-center justify-center">
+                    <img src={previewIdeaModal.media_url} alt="Media" className="w-full h-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="w-24 h-24 rounded-xl border border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400 text-xs">
+                    No media
+                  </div>
+                )}
+              </div>
+
+              {/* Link */}
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Link</label>
+                <div className="flex items-center gap-2 border border-slate-100 rounded-xl p-3 bg-slate-50/40 text-sm text-indigo-600 font-medium">
+                  <Link2 className="w-4 h-4 text-slate-400 shrink-0" />
+                  <a href={previewIdeaModal.link_url || "https://www.clicktaketech.com/"} target="_blank" rel="noreferrer" className="truncate hover:underline">
+                    {previewIdeaModal.link_url || "https://www.clicktaketech.com/"}
+                  </a>
+                </div>
+              </div>
+
+              {/* First comment */}
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">First comment</label>
+                <div className="border border-slate-100 rounded-xl p-3.5 bg-slate-50/40 text-sm text-slate-700">
+                  {previewIdeaModal.first_comment || "Why are your lead generation efforts falling short?"}
+                </div>
+              </div>
+
+              {/* Created by */}
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Created by</label>
+                <div className="text-xs text-slate-500 font-medium">
+                  {previewIdeaModal.created_by || "Admin"}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="p-5 border-t border-slate-100 flex items-center justify-between bg-white">
+              <button
+                onClick={() => handleDeleteIdea(previewIdeaModal.id)}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 text-sm font-semibold transition-all"
+              >
+                <Trash2 className="w-4 h-4" /> Delete
+              </button>
+              <button
+                onClick={() => {
+                  setPreviewIdeaModal(null);
+                  if (onScheduleToChannels) onScheduleToChannels();
+                  else alert("Directing to Channels selection...");
+                }}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#635BFF] hover:bg-[#5249e6] text-white text-sm font-semibold transition-all shadow-md shadow-indigo-100"
+              >
+                Schedule <CalendarIcon className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Modal - Reference UI exact design */}
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-100">
+            {/* Header */}
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="font-bold text-slate-900 text-xl">Create Content Idea</h2>
+              <button
+                onClick={() => setIsCreateModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-lg hover:bg-slate-50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form Scroll Area */}
+            <form onSubmit={handleCreateIdea} className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Title */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-800 mb-2">Title</label>
+                <input
+                  type="text"
+                  required
+                  value={formTitle}
+                  onChange={(e) => setFormTitle(e.target.value)}
+                  placeholder="Product Launch"
+                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 placeholder-slate-300 outline-none focus:border-indigo-500 transition-all shadow-sm"
+                />
+              </div>
+
+              {/* Post content */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-800 mb-2">Post content</label>
+                <textarea
+                  required
+                  rows={5}
+                  value={formContent}
+                  onChange={(e) => setFormContent(e.target.value)}
+                  placeholder="min character 300"
+                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 placeholder-slate-300 outline-none focus:border-indigo-500 transition-all shadow-sm resize-none"
+                />
+              </div>
+
+              {/* Media Upload Box */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-800 mb-2">Media</label>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  accept="image/*,video/*"
+                  className="hidden"
+                />
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border border-dashed border-slate-200 rounded-xl p-5 bg-slate-50/50 flex items-center justify-between cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/20 transition-all"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 overflow-hidden">
+                      {mediaPreviewUrl ? (
+                        <img src={mediaPreviewUrl} alt="Preview" className="w-full h-full object-cover" />
+                      ) : (
+                        <LayoutGrid className="w-6 h-6 text-slate-400" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-slate-700">
+                        <span className="text-indigo-600 font-semibold hover:underline">
+                          {mediaFile ? mediaFile.name : "Click to upload"}
+                        </span>{" "}
+                        {mediaFile ? "" : "media"}
+                      </div>
+                      <div className="text-xs text-slate-400 mt-0.5">SVG, PNG, JPG, GIF or MP4</div>
+                    </div>
+                  </div>
+                  {mediaFile && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMediaFile(null);
+                        setMediaPreviewUrl("");
+                      }}
+                      className="text-xs text-red-500 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Add Link */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-800 mb-2">Add Link</label>
+                <div className="relative">
+                  <Link2 className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="url"
+                    value={formLinkUrl}
+                    onChange={(e) => setFormLinkUrl(e.target.value)}
+                    placeholder="https://"
+                    className="w-full border border-slate-200 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-800 placeholder-slate-300 outline-none focus:border-indigo-500 transition-all shadow-sm"
+                  />
+                </div>
+              </div>
+
+              {/* First comment */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-800 mb-2">First comment</label>
+                <textarea
+                  rows={3}
+                  value={formFirstComment}
+                  onChange={(e) => setFormFirstComment(e.target.value)}
+                  placeholder="Add your first comment"
+                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 placeholder-slate-300 outline-none focus:border-indigo-500 transition-all shadow-sm resize-none"
+                />
+              </div>
+
+              {/* Footer Actions */}
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setFormIsStarred(!formIsStarred)}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                    formIsStarred
+                      ? "border-amber-300 bg-amber-50 text-amber-600"
+                      : "border-slate-200 text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  <span>{formIsStarred ? "★" : "☆"}</span> {formIsStarred ? "Starred" : "Star"}
+                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateModalOpen(false)}
+                    className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="px-6 py-2.5 rounded-xl bg-[#635BFF] hover:bg-[#5249e6] text-white text-sm font-semibold transition-all shadow-md shadow-indigo-100"
+                  >
+                    {isSubmitting ? "Creating..." : "Create"}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </motion.div>
   );
 }
