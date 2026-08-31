@@ -41,6 +41,8 @@ import {
 } from "lucide-react";
 import { getAllPosts, getChannels, addChannel, Post, Channel } from "@/lib/firestore";
 import Image from "next/image";
+import { useSocialPoster } from "@/context/SocialPosterContext";
+
 
 import {
   FaFacebook,
@@ -93,30 +95,20 @@ export default function SocialPosterPage() {
   
   const [currentDate, setCurrentDate] = useState(new Date());
   
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    posts,
+    channels,
+    loading,
+    actionLoading,
+    schedulePostOptimistic,
+  } = useSocialPoster();
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
 
   const [isMounted, setIsMounted] = useState(false);
 
-  // Fetch posts and channels
+  // Set mount status and handle url parameters
   useEffect(() => {
     setIsMounted(true);
-    async function loadData() {
-      try {
-        const fetchedPosts = await getAllPosts();
-        setPosts(fetchedPosts);
-        
-        const fetchedChannels = await getChannels();
-        setChannels(fetchedChannels);
-      } catch (error) {
-        console.error("Error loading data:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadData();
     
     // Check for OAuth callback parameters
     if (typeof window !== "undefined") {
@@ -135,6 +127,7 @@ export default function SocialPosterPage() {
       }
     }
   }, []);
+
 
   // Dropdown states
   const [isDisplayDropdownOpen, setIsDisplayDropdownOpen] = useState(false);
@@ -167,7 +160,7 @@ export default function SocialPosterPage() {
   const [selectedChannelsForPost, setSelectedChannelsForPost] = useState<Channel[]>([]);
   const [channelSearchQuery, setChannelSearchQuery] = useState("");
   const [postContent, setPostContent] = useState("");
-  const [isScheduling, setIsScheduling] = useState(false);
+  const isScheduling = actionLoading;
   const [scheduleDate, setScheduleDate] = useState<Date>(() => {
     const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d;
   });
@@ -185,13 +178,11 @@ export default function SocialPosterPage() {
   const handleSchedule = async (isShareNow: boolean = false) => {
     if (selectedChannelsForPost.length === 0 || !postContent) return;
     
-    setIsScheduling(true);
-    try {
+    const apiCall = async () => {
       const response = await fetch("/api/schedule", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          // Send a dummy token or logic for the demo, since we handled mock logic in the API
           "Authorization": "Bearer mock_token"
         },
         body: JSON.stringify({
@@ -199,13 +190,35 @@ export default function SocialPosterPage() {
           channels: selectedChannelsForPost,
           scheduledAt: isShareNow ? new Date().toISOString() : scheduleDate.toISOString(),
           mediaUrls: attachLink && linkUrl ? [linkUrl] : [],
-          isShareNow // Pass flag to backend if it wants to handle it differently
+          isShareNow
         }),
       });
 
       if (!response.ok) {
         throw new Error("Failed to schedule post");
       }
+
+      const data = await response.json();
+      return data.post || {
+        content: postContent,
+        networks: selectedChannelsForPost.map(c => c.network),
+        authorEmail: "me@demo.com",
+        status: isShareNow ? "published" : "scheduled",
+        id: `post-${Date.now()}`
+      };
+    };
+
+    try {
+      await schedulePostOptimistic(
+        {
+          content: postContent,
+          networks: selectedChannelsForPost.map(c => c.network),
+          authorId: "current-user-id",
+          authorEmail: "me@demo.com",
+          status: isShareNow ? "published" : "scheduled",
+        },
+        apiCall
+      );
 
       // Close modal and reset state
       setIsScheduleModalOpen(false);
@@ -216,18 +229,14 @@ export default function SocialPosterPage() {
       setAttachLink(false);
       setUploadMedia(false);
       
-      // Notify user and reload posts
+      // Notify user
       alert(isShareNow ? "Post published successfully!" : "Post scheduled successfully!");
-      const fetchedPosts = await getAllPosts();
-      setPosts(fetchedPosts);
-      
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error scheduling:", error);
-      alert("Error scheduling post. Please try again.");
-    } finally {
-      setIsScheduling(false);
+      alert("Error scheduling post: " + (error.message || "Please try again."));
     }
   };
+
 
 
 
