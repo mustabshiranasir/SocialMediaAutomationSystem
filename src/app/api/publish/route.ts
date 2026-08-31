@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
 import { publishToFacebook, publishToTwitter } from "@/lib/publishers";
 import { SocialAccountsData } from "@/lib/firestore";
+import { canPublishDirectly } from "@/lib/permissions";
 
 export async function POST(req: Request) {
   try {
@@ -38,8 +39,8 @@ export async function POST(req: Request) {
     }
 
     const data = userDoc.data();
-    if (data?.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden - Admin access required" }, { status: 403 });
+    if (!data || !canPublishDirectly(data.role || "")) {
+      return NextResponse.json({ error: "Forbidden - Insufficient permissions to publish" }, { status: 403 });
     }
     
     const socialAccounts = data?.socialAccounts as SocialAccountsData | undefined;

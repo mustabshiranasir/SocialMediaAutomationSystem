@@ -4,3 +4,5 @@ export { Card, CardHeader, StatCard } from "./Card";
 export { Input, Textarea, Select } from "./Input";
 export { Badge, StatusBadge } from "./Badge";
 export { Modal } from "./Modal";
+export { Table } from "./Table";
+export type { Column } from "./Table";

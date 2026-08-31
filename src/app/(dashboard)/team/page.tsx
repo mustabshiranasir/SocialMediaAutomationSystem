@@ -2,36 +2,38 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
-import { ArrowLeft, Loader2, ShieldAlert, Users, UserCog, Plus, X } from "lucide-react";
-import ProtectedRoute from "@/components/ProtectedRoute";
+import { Loader2, ShieldAlert, Search } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useSocialPoster } from "@/context/SocialPosterContext";
+import { Table, Badge, Button } from "@/components/ui";
+import type { Column } from "@/components/ui";
+import { isAdmin } from "@/lib/permissions";
 
 type UserRecord = {
   uid: string;
   email: string;
+  displayName: string;
   creationTime: string;
-  role: "admin" | "user";
+  role: string;
 };
 
-const inputClass =
-  "w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all";
-
-export default function TeamManagement() {
+export default function AllUsers() {
   const { user, role, loading: authLoading } = useAuth();
+  const { posts } = useSocialPoster();
+  
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
-
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newEmail, setNewEmail] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [newName, setNewName] = useState("");
-  const [newRole, setNewRole] = useState<"admin" | "user">("user");
-  const [isAdding, setIsAdding] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState<string>("all");
+  
+  // Selection state
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkAction, setBulkAction] = useState("");
+  const [roleToChange, setRoleToChange] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
-    if (authLoading || role !== "admin") {
+    if (authLoading || !isAdmin(role || "")) {
       if (!authLoading) setLoading(false);
       return;
     }
@@ -43,10 +45,15 @@ export default function TeamManagement() {
     try {
       if (!user) return;
       const idToken = await user.getIdToken();
-      const res = await fetch("/api/users", { headers: { "Authorization": `Bearer ${idToken}` } });
+      const res = await fetch("/api/users", {
+        headers: { "Authorization": `Bearer ${idToken}` }
+      });
       const data = await res.json();
-      if (res.ok) setUsers(data.users);
-      else throw new Error(data.error);
+      if (res.ok) {
+        setUsers(data.users || []);
+      } else {
+        throw new Error(data.error);
+      }
     } catch (error) {
       console.error(error);
       alert("Failed to load users");
@@ -55,215 +62,459 @@ export default function TeamManagement() {
     }
   };
 
-  const handleRoleChange = async (targetUserId: string, newRole: "admin" | "user") => {
-    if (!user) return;
-    if (targetUserId === user.uid && newRole === "user") {
-      if (!confirm("Are you sure you want to remove your own admin privileges?")) return;
-    }
-    setUpdatingId(targetUserId);
-    try {
-      const idToken = await user.getIdToken();
-      const res = await fetch("/api/users", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${idToken}` },
-        body: JSON.stringify({ targetUserId, newRole }),
-      });
-      if (!res.ok) throw new Error("Failed to update role");
-      setUsers(users.map(u => u.uid === targetUserId ? { ...u, role: newRole } : u));
-    } catch (error) {
-      console.error(error);
-      alert("Error updating user role");
-    } finally {
-      setUpdatingId(null);
+  // Get user's post count from social posts context
+  const getPostCount = (userId: string) => {
+    return posts ? posts.filter(p => p.authorId === userId).length : 0;
+  };
+
+  // Checkbox handlers
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      // Select all users except current logged-in user (to prevent self-actions)
+      const nonSelfIds = filteredUsers
+        .filter(u => u.uid !== user?.uid)
+        .map(u => u.uid);
+      setSelectedIds(nonSelfIds);
+    } else {
+      setSelectedIds([]);
     }
   };
 
-  const handleAddUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    setIsAdding(true);
-    try {
-      const idToken = await user.getIdToken();
-      const res = await fetch("/api/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${idToken}` },
-        body: JSON.stringify({ email: newEmail, password: newPassword, name: newName, role: newRole }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(`${data.error}\n\nStack:\n${data.stack || "None"}`);
-      setUsers([data.user, ...users]);
-      setShowAddModal(false);
-      setNewEmail(""); setNewPassword(""); setNewName(""); setNewRole("user");
-    } catch (error: any) {
-      console.error(error);
-      alert("Error adding user: " + error.message);
-    } finally {
-      setIsAdding(false);
+  const toggleSelect = (uid: string) => {
+    setSelectedIds(prev => 
+      prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid]
+    );
+  };
+
+  // Apply Bulk Action (Delete or Password Reset)
+  const handleApplyBulkAction = async () => {
+    if (selectedIds.length === 0) {
+      alert("Please select at least one user.");
+      return;
+    }
+
+    if (bulkAction === "delete") {
+      if (!confirm(`Are you sure you want to delete ${selectedIds.length} user(s)? This cannot be undone.`)) {
+        return;
+      }
+
+      setIsProcessing(true);
+      try {
+        if (!user) return;
+        const idToken = await user.getIdToken();
+
+        for (const targetUserId of selectedIds) {
+          const res = await fetch("/api/users", {
+            method: "DELETE",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${idToken}`
+            },
+            body: JSON.stringify({ targetUserId }),
+          });
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || "Failed to delete user");
+          }
+        }
+
+        setUsers(prev => prev.filter(u => !selectedIds.includes(u.uid)));
+        setSelectedIds([]);
+        setBulkAction("");
+        alert("User(s) deleted successfully.");
+      } catch (err: any) {
+        console.error(err);
+        alert("Error executing bulk delete: " + err.message);
+      } finally {
+        setIsProcessing(false);
+      }
+    } else if (bulkAction === "reset_password") {
+      if (!confirm(`Are you sure you want to send a password reset email to the ${selectedIds.length} selected user(s)?`)) {
+        return;
+      }
+
+      setIsProcessing(true);
+      try {
+        const { sendPasswordResetEmail } = await import("firebase/auth");
+        const { auth } = await import("@/lib/firebase");
+
+        for (const targetUserId of selectedIds) {
+          const targetUser = users.find(u => u.uid === targetUserId);
+          if (targetUser && targetUser.email) {
+            await sendPasswordResetEmail(auth, targetUser.email);
+          }
+        }
+
+        setSelectedIds([]);
+        setBulkAction("");
+        alert("Password reset email(s) sent successfully.");
+      } catch (err: any) {
+        console.error(err);
+        alert("Error sending password resets: " + err.message);
+      } finally {
+        setIsProcessing(false);
+      }
+    } else {
+      alert("Please select a valid bulk action.");
     }
   };
+
+  // Apply Change Role
+  const handleChangeRoles = async () => {
+    if (selectedIds.length === 0) {
+      alert("Please select at least one user.");
+      return;
+    }
+    if (!roleToChange) {
+      alert("Please select a target role.");
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      if (!user) return;
+      const idToken = await user.getIdToken();
+
+      for (const targetUserId of selectedIds) {
+        const res = await fetch("/api/users", {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${idToken}`
+          },
+          body: JSON.stringify({ targetUserId, newRole: roleToChange }),
+        });
+        if (!res.ok) {
+          throw new Error("Failed to update role");
+        }
+      }
+
+      setUsers(prev => prev.map(u => 
+        selectedIds.includes(u.uid) ? { ...u, role: roleToChange } : u
+      ));
+      setSelectedIds([]);
+      setRoleToChange("");
+      alert("User roles updated successfully.");
+    } catch (err: any) {
+      console.error(err);
+      alert("Error changing roles: " + err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Filter & Search computation
+  const filteredUsers = users.filter(u => {
+    const safeRole = (u.role || "").toLowerCase();
+    const roleMatch = activeFilter === "all" || safeRole === activeFilter;
+    const nameMatch = 
+      (u.email || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (u.displayName || "").toLowerCase().includes(searchQuery.toLowerCase());
+    return roleMatch && nameMatch;
+  });
+
+  // Role Counts
+  const totalCount = users.length;
+  const adminCount = users.filter(u => (u.role || "").toLowerCase() === "administrator").length;
+  const editorCount = users.filter(u => (u.role || "").toLowerCase() === "editor").length;
+  const authorCount = users.filter(u => (u.role || "").toLowerCase() === "author").length;
+  const contributorCount = users.filter(u => (u.role || "").toLowerCase() === "contributor").length;
+  const subscriberCount = users.filter(u => (u.role || "").toLowerCase() === "subscriber").length;
+  const noneCount = users.filter(u => !(u.role) || (u.role || "").toLowerCase() === "none").length;
 
   if (authLoading) return null;
 
-  if (role !== "admin") {
+  if (!isAdmin(role || "")) {
     return (
-      <ProtectedRoute>
-        <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center">
-          <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mb-4">
-            <ShieldAlert className="w-8 h-8 text-red-500" />
-          </div>
-          <h1 className="text-2xl font-bold mb-2 text-slate-800">Access Denied</h1>
-          <p className="text-slate-500 mb-6">You need admin privileges to manage the team.</p>
-          <Link href="/" className="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium transition-colors">
-            Return to Dashboard
-          </Link>
+      <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center bg-white rounded-2xl border border-slate-200 shadow-sm">
+        <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mb-4 border border-red-100">
+          <ShieldAlert className="w-8 h-8 text-red-500" />
         </div>
-      </ProtectedRoute>
+        <h1 className="text-2xl font-bold mb-2 text-slate-800">Access Denied</h1>
+        <p className="text-slate-500 mb-6 text-sm max-w-sm leading-relaxed">You need administrator privileges to view this page.</p>
+        <Link href="/team/profile">
+          <Button variant="secondary" className="font-semibold text-xs py-2 px-4 bg-slate-100 border border-slate-200 hover:bg-slate-200">
+            Go to My Profile
+          </Button>
+        </Link>
+      </div>
     );
   }
 
-  return (
-    <ProtectedRoute>
-      <div className="max-w-5xl mx-auto">
-        <header className="flex justify-between items-center mb-8">
-          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-800">Team Management</h1>
-            <p className="text-slate-500 text-sm mt-1">Manage your team's access and roles</p>
-          </motion.div>
+  // Table Columns Definition
+  const columns: Column<UserRecord & { postCount: number }>[] = [
+    {
+      key: "select",
+      header: "",
+      headerClassName: "w-12 text-center",
+      className: "text-center",
+      render: (_, row) => (
+        <input
+          type="checkbox"
+          checked={selectedIds.includes(row.uid)}
+          onChange={() => toggleSelect(row.uid)}
+          disabled={row.uid === user?.uid} // Can't select/delete yourself
+          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+        />
+      ),
+    },
+    {
+      key: "email",
+      header: "Username",
+      render: (email, row) => {
+        const safeEmail = email || "";
+        const initial = row.displayName 
+          ? row.displayName[0].toUpperCase() 
+          : (safeEmail ? safeEmail[0].toUpperCase() : "?");
+        const username = safeEmail ? safeEmail.split("@")[0] : "user_" + row.uid.slice(0, 5);
+
+        return (
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-md shadow-blue-500/20"
-            >
-              <Plus className="w-4 h-4" /> Add User
-            </button>
-            <Link href="/"
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" /> Back
-            </Link>
-          </div>
-        </header>
-
-        {loading ? (
-          <div className="flex justify-center p-20">
-            <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
-          </div>
-        ) : (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50">
-                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">User</th>
-                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Joined</th>
-                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Role</th>
-                    <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {users.map((u) => (
-                    <tr key={u.uid} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm shrink-0">
-                            {u.email[0].toUpperCase()}
-                          </div>
-                          <div>
-                            <span className="font-medium text-slate-800 text-sm">{u.email}</span>
-                            {u.uid === user?.uid && (
-                              <span className="ml-2 text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">You</span>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-4 text-slate-500 text-sm">
-                        {new Date(u.creationTime).toLocaleDateString()}
-                      </td>
-                      <td className="p-4">
-                        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wide
-                          ${u.role === "admin" ? "bg-purple-100 text-purple-700" : "bg-slate-100 text-slate-600"}`}>
-                          {u.role === "admin" ? <UserCog className="w-3.5 h-3.5" /> : <Users className="w-3.5 h-3.5" />}
-                          {u.role}
-                        </div>
-                      </td>
-                      <td className="p-4 text-right">
-                        {updatingId === u.uid ? (
-                          <div className="flex justify-end px-3 py-1.5">
-                            <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
-                          </div>
-                        ) : (
-                          <select
-                            value={u.role}
-                            onChange={(e) => handleRoleChange(u.uid, e.target.value as "admin" | "user")}
-                            className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer hover:border-slate-300 transition-colors"
-                          >
-                            <option value="user">User</option>
-                            <option value="admin">Admin</option>
-                          </select>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 shrink-0 font-bold border border-slate-200">
+              {initial}
             </div>
-          </motion.div>
-        )}
-
-        {/* Add User Modal */}
-        {showAddModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-white p-6 rounded-2xl w-full max-w-md border border-slate-200 shadow-xl relative"
-            >
-              <button onClick={() => setShowAddModal(false)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-              <h2 className="text-xl font-bold mb-6 text-slate-800">Add New User</h2>
-              <form onSubmit={handleAddUser} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Name (Optional)</label>
-                  <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)}
-                    className={inputClass} placeholder="e.g. John Doe" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Email *</label>
-                  <input type="email" required value={newEmail} onChange={(e) => setNewEmail(e.target.value)}
-                    className={inputClass} placeholder="e.g. newuser@example.com" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Password *</label>
-                  <input type="password" required minLength={6} value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-                    className={inputClass} placeholder="Minimum 6 characters" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Role *</label>
-                  <select value={newRole} onChange={(e) => setNewRole(e.target.value as "admin" | "user")}
-                    className={inputClass + " cursor-pointer"}>
-                    <option value="user">User (Standard)</option>
-                    <option value="admin">Administrator</option>
-                  </select>
-                </div>
-                <div className="pt-4 flex justify-end gap-3">
-                  <button type="button" onClick={() => setShowAddModal(false)}
-                    className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors">
-                    Cancel
-                  </button>
-                  <button type="submit" disabled={isAdding}
-                    className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-70">
-                    {isAdding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                    Create User
-                  </button>
-                </div>
-              </form>
-            </motion.div>
+            <div className="min-w-0">
+              <span className="font-semibold text-slate-800 block truncate text-sm">
+                {username}
+              </span>
+              {row.uid === user?.uid && (
+                <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.2 rounded-full font-medium inline-block mt-0.5">You</span>
+              )}
+            </div>
           </div>
-        )}
+        );
+      },
+    },
+    {
+      key: "displayName",
+      header: "Name",
+      render: (name, row) => {
+        const safeEmail = row.email || "";
+        return (
+          <span className="text-slate-600 text-sm font-medium">
+            {name || (safeEmail ? safeEmail.split("@")[0] : "Unnamed User")}
+          </span>
+        );
+      },
+    },
+    {
+      key: "email",
+      header: "Email",
+      render: (email) => (
+        email ? (
+          <a href={`mailto:${email}`} className="text-blue-600 hover:underline text-sm font-medium">
+            {email}
+          </a>
+        ) : (
+          <span className="text-slate-400 text-xs italic">No email address</span>
+        )
+      ),
+    },
+    {
+      key: "role",
+      header: "Role",
+      render: (roleVal) => {
+        const lower = (roleVal || "").toLowerCase();
+        const variant = 
+          lower === "administrator" ? "purple" :
+          lower === "editor" ? "info" :
+          lower === "author" ? "success" :
+          lower === "contributor" ? "warning" :
+          lower === "subscriber" ? "default" :
+          "default";
+        return (
+          <Badge variant={variant}>
+            {roleVal || "None"}
+          </Badge>
+        );
+      },
+    },
+    {
+      key: "postCount",
+      header: "Posts",
+      headerClassName: "text-center w-24",
+      className: "text-center font-semibold text-slate-700 text-sm",
+      render: (count) => count,
+    }
+  ];
+
+  // Map user records to include post counts
+  const dataForTable = filteredUsers.map(u => ({
+    ...u,
+    postCount: getPostCount(u.uid)
+  }));
+
+  // Render Action controls
+  const renderControls = (isBottom = false) => (
+    <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${isBottom ? "mt-4" : "mb-4"}`}>
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        {/* Bulk Action selector */}
+        <select
+          value={bulkAction}
+          onChange={(e) => setBulkAction(e.target.value)}
+          className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer min-w-[150px]"
+        >
+          <option value="">Bulk actions</option>
+          <option value="delete">Delete</option>
+          <option value="reset_password">Send password reset</option>
+        </select>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={isProcessing || !bulkAction}
+          onClick={handleApplyBulkAction}
+        >
+          Apply
+        </Button>
+
+        {/* Change Role selector */}
+        <div className="h-4 w-px bg-slate-200 mx-1 hidden sm:block" />
+
+        <select
+          value={roleToChange}
+          onChange={(e) => setRoleToChange(e.target.value)}
+          className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer min-w-[180px]"
+        >
+          <option value="">Change role to...</option>
+          <option value="subscriber">Subscriber</option>
+          <option value="contributor">Contributor</option>
+          <option value="author">Author</option>
+          <option value="editor">Editor</option>
+          <option value="administrator">Administrator</option>
+          <option value="none">— No role for this site —</option>
+        </select>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={isProcessing || !roleToChange}
+          onClick={handleChangeRoles}
+        >
+          Change
+        </Button>
       </div>
-    </ProtectedRoute>
+
+      <div className="text-xs text-slate-400 font-medium">
+        {filteredUsers.length} items
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-800">Users</h1>
+          <Link href="/team/add">
+            <Button variant="secondary" size="sm" className="bg-white hover:bg-slate-50 border border-slate-200 font-semibold text-xs py-1 px-3">
+              Add User
+            </Button>
+          </Link>
+        </div>
+
+        {/* Search box */}
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="search"
+              placeholder="Search users..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 pr-4 py-2 border border-slate-200 rounded-xl bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs w-48 transition-all focus:w-60"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* WP style filter tabs */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs font-medium text-slate-400 border-b border-slate-200 pb-2.5">
+        <button
+          onClick={() => setActiveFilter("all")}
+          className={`transition-colors ${activeFilter === "all" ? "text-blue-600 font-bold" : "hover:text-slate-700"}`}
+        >
+          All ({totalCount})
+        </button>
+        <span>|</span>
+        <button
+          onClick={() => setActiveFilter("administrator")}
+          className={`transition-colors ${activeFilter === "administrator" ? "text-blue-600 font-bold" : "hover:text-slate-700"}`}
+        >
+          Administrators ({adminCount})
+        </button>
+        <span>|</span>
+        <button
+          onClick={() => setActiveFilter("editor")}
+          className={`transition-colors ${activeFilter === "editor" ? "text-blue-600 font-bold" : "hover:text-slate-700"}`}
+        >
+          Editors ({editorCount})
+        </button>
+        <span>|</span>
+        <button
+          onClick={() => setActiveFilter("author")}
+          className={`transition-colors ${activeFilter === "author" ? "text-blue-600 font-bold" : "hover:text-slate-700"}`}
+        >
+          Authors ({authorCount})
+        </button>
+        <span>|</span>
+        <button
+          onClick={() => setActiveFilter("contributor")}
+          className={`transition-colors ${activeFilter === "contributor" ? "text-blue-600 font-bold" : "hover:text-slate-700"}`}
+        >
+          Contributors ({contributorCount})
+        </button>
+        <span>|</span>
+        <button
+          onClick={() => setActiveFilter("subscriber")}
+          className={`transition-colors ${activeFilter === "subscriber" ? "text-blue-600 font-bold" : "hover:text-slate-700"}`}
+        >
+          Subscribers ({subscriberCount})
+        </button>
+        <span>|</span>
+        <button
+          onClick={() => setActiveFilter("none")}
+          className={`transition-colors ${activeFilter === "none" ? "text-blue-600 font-bold" : "hover:text-slate-700"}`}
+        >
+          None ({noneCount})
+        </button>
+      </div>
+
+      {/* Action Controls (Top) */}
+      {renderControls(false)}
+
+      {/* Table wrapper */}
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
+          <p className="text-slate-400 text-xs">Loading user list...</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <Table
+            columns={columns}
+            data={dataForTable}
+            keyExtractor={(row) => row.uid}
+            emptyMessage="No users found matching the filter."
+            striped={true}
+            hoverable={true}
+            className="bg-white shadow-xs"
+          />
+
+          {/* Select All Checkbox logic */}
+          <div className="flex items-center gap-2 pl-4 text-xs font-semibold text-slate-500 uppercase tracking-wider py-1.5">
+            <input
+              type="checkbox"
+              onChange={(e) => handleSelectAll(e.target.checked)}
+              checked={selectedIds.length > 0 && selectedIds.length === filteredUsers.filter(u => u.uid !== user?.uid).length}
+              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+            <span className="text-[10px] text-slate-400">Select All (excludes you)</span>
+          </div>
+
+          {/* Action Controls (Bottom) */}
+          {renderControls(true)}
+        </div>
+      )}
+    </div>
   );
 }

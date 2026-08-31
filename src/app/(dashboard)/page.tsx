@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Bell, TrendingUp, CheckCircle2, Clock, FileText, Users, BarChart2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { getPendingPosts, getAllPosts, Post } from "@/lib/firestore";
+import { isEditorOrAbove } from "@/lib/permissions";
 import Link from "next/link";
 import { Card, CardHeader, StatCard } from "@/components/ui";
 
@@ -15,7 +16,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     getAllPosts().then(setPosts).catch(console.error);
-    if (role !== "admin") return;
+    if (!isEditorOrAbove(role || "")) return;
     getPendingPosts().then(p => setPendingCount(p.length)).catch(console.error);
   }, [role]);
 
@@ -26,7 +27,7 @@ export default function Dashboard() {
     { label: "Total Posts",  value: posts.length, icon: <FileText className="w-5 h-5" />,     iconBg: "bg-blue-50", iconText: "text-blue-600", border: "border-blue-100"    },
     { label: "Published",    value: published,    icon: <CheckCircle2 className="w-5 h-5" />, iconBg: "bg-emerald-50", iconText: "text-emerald-600", border: "border-emerald-100" },
     { label: "Pending",      value: pending,      icon: <Clock className="w-5 h-5" />,        iconBg: "bg-amber-50", iconText: "text-amber-600", border: "border-amber-100"   },
-    ...(role === "admin" ? [{ label: "Pending Review", value: pendingCount, icon: <Bell className="w-5 h-5" />, iconBg: "bg-red-50", iconText: "text-red-600", border: "border-red-100" }] : []),
+    ...(isEditorOrAbove(role || "") ? [{ label: "Pending Review", value: pendingCount, icon: <Bell className="w-5 h-5" />, iconBg: "bg-red-50", iconText: "text-red-600", border: "border-red-100" }] : []),
   ];
 
   const recentPosts = [...posts]
@@ -40,7 +41,7 @@ export default function Dashboard() {
         <p className="text-slate-500 text-sm mt-1">Welcome back, {user?.email}</p>
       </motion.div>
 
-      {role === "admin" && pendingCount > 0 && (
+      {isEditorOrAbove(role || "") && pendingCount > 0 && (
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
           <Link href="/approvals">
             <div className="flex items-center justify-between p-4 rounded-xl bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer">

@@ -7,18 +7,20 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, FileText, ChevronDown, Image, ShieldCheck,
   Link2, Users, Settings, LogOut, PenSquare, Tag, FolderOpen,
-  ImagePlus, List, MessageSquare, BarChart2
+  ImagePlus, List, MessageSquare, BarChart2, TrendingUp
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { getPendingPosts } from "@/lib/firestore";
+import { isAdmin, isEditorOrAbove } from "@/lib/permissions";
 
 type NavItem = {
   label: string;
   href?: string;
   icon: React.ReactNode;
   adminOnly?: boolean;
+  requiresEditor?: boolean;
   badge?: number;
-  children?: { label: string; href: string }[];
+  children?: { label: string; href: string; adminOnly?: boolean }[];
 };
 
 interface SidebarProps {
@@ -33,7 +35,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [openMenus, setOpenMenus] = useState<string[]>([]);
 
   useEffect(() => {
-    if (role !== "admin") return;
+    if (!isEditorOrAbove(role || "")) return;
     getPendingPosts()
       .then(posts => setPendingCount(posts.length))
       .catch(console.error);
@@ -44,6 +46,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       label: "Dashboard",
       href: "/",
       icon: <LayoutDashboard className="w-4 h-4" />,
+    },
+    {
+      label: "Analytics",
+      href: "/analytics",
+      icon: <TrendingUp className="w-4 h-4" />,
     },
     {
       label: "Posts",
@@ -72,19 +79,24 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       label: "Approvals",
       href: "/approvals",
       icon: <ShieldCheck className="w-4 h-4" />,
-      adminOnly: true,
+      requiresEditor: true,
       badge: pendingCount,
     },
     {
       label: "Accounts",
       href: "/accounts",
       icon: <Link2 className="w-4 h-4" />,
+      adminOnly: true,
     },
     {
-      label: "Team",
-      href: "/team",
+      label: "Users",
       icon: <Users className="w-4 h-4" />,
       adminOnly: true,
+      children: [
+        { label: "All Users", href: "/team", adminOnly: true },
+        { label: "Add User", href: "/team/add", adminOnly: true },
+        { label: "Profile", href: "/team/profile" },
+      ],
     },
     {
       label: "Social Poster",
@@ -95,6 +107,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       label: "Settings",
       href: "/settings",
       icon: <Settings className="w-4 h-4" />,
+      adminOnly: true,
     },
   ];
 
@@ -106,12 +119,13 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
+    if (href === "/team") return pathname === "/team";
     return pathname.startsWith(href);
   };
 
   const isParentActive = (item: NavItem) => {
     if (!item.children) return false;
-    return item.children.some(child => pathname.startsWith(child.href));
+    return item.children.some(child => isActive(child.href));
   };
 
   return (
@@ -142,12 +156,16 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
         {navItems.map((item) => {
-          if (item.adminOnly && role !== "admin") return null;
+          if (item.adminOnly && !isAdmin(role || "")) return null;
+          if (item.requiresEditor && !isEditorOrAbove(role || "")) return null;
 
           // Parent with children
           if (item.children) {
             const open = openMenus.includes(item.label);
             const parentActive = isParentActive(item);
+            const visibleChildren = item.children.filter(child => !child.adminOnly || isAdmin(role || ""));
+            if (visibleChildren.length === 0) return null;
+
             return (
               <div key={item.label}>
                 <button
@@ -175,7 +193,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                       className="overflow-hidden"
                     >
                       <div className="ml-3 pl-3 border-l border-white/10 mt-0.5 space-y-0.5 py-1">
-                        {item.children.map(child => (
+                        {visibleChildren.map(child => (
                           <Link
                             key={child.href}
                             href={child.href}
@@ -184,7 +202,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                               ${isActive(child.href)
                                 ? "text-white font-semibold bg-primary/10"
                                 : "text-slate-400 hover:text-white hover:bg-white/5"
-                              }`}
+                                }`}
                           >
                             {child.label}
                           </Link>
@@ -243,8 +261,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-medium text-white truncate">{user?.email}</p>
-            <p className={`text-[10px] capitalize ${role === "admin" ? "text-purple-400" : "text-slate-500"}`}>
-              {role}
+            <p className={`text-[10px] capitalize ${isAdmin(role || "") ? "text-purple-400" : "text-slate-500"}`}>
+              {role || "User"}
             </p>
           </div>
           <button

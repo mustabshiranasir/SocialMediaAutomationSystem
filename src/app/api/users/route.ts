@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
+import { isAdmin } from "@/lib/permissions";
 
 // Helper to authenticate requests
 async function authenticateAdmin(req: Request) {
@@ -13,7 +14,7 @@ async function authenticateAdmin(req: Request) {
   const userId = decodedToken.uid;
 
   const userDoc = await adminDb.collection("users").doc(userId).get();
-  if (!userDoc.exists || userDoc.data()?.role !== "admin") {
+  if (!userDoc.exists || !isAdmin(userDoc.data()?.role || "")) {
     throw new Error("Forbidden - Admin access required");
   }
   
@@ -38,6 +39,7 @@ export async function GET(req: Request) {
     const users = listUsersResult.users.map((userRecord: any) => ({
       uid: userRecord.uid,
       email: userRecord.email,
+      displayName: userRecord.displayName || "",
       creationTime: userRecord.metadata.creationTime,
       role: roleMap.get(userRecord.uid) || "user"
     }));
@@ -54,8 +56,8 @@ export async function PATCH(req: Request) {
     await authenticateAdmin(req);
 
     const { targetUserId, newRole } = await req.json();
-
-    if (!targetUserId || !newRole || !["admin", "user"].includes(newRole)) {
+    const VALID_ROLES = ["subscriber", "contributor", "author", "editor", "administrator", "none"];
+    if (!targetUserId || !newRole || !VALID_ROLES.includes(newRole.toLowerCase())) {
       return NextResponse.json({ error: "Invalid data" }, { status: 400 });
     }
 
@@ -114,5 +116,28 @@ export async function POST(req: Request) {
       { error: msg, stack: error?.stack || "No stack trace" }, 
       { status: msg.includes("Forbidden") ? 403 : 500 }
     );
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    await authenticateAdmin(req);
+    const { targetUserId } = await req.json();
+
+    if (!targetUserId) {
+      return NextResponse.json({ error: "User ID is required" }, { status: 400 });
+    }
+
+    // 1. Delete user from Firebase Auth
+    await adminAuth.deleteUser(targetUserId);
+
+    // 2. Delete user profile from Firestore
+    await adminDb.collection("users").doc(targetUserId).delete();
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error("DELETE User Error:", error);
+    const msg = error?.message || "Unknown error";
+    return NextResponse.json({ error: msg }, { status: msg.includes("Forbidden") ? 403 : 500 });
   }
 }

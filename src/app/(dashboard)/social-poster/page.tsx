@@ -100,6 +100,7 @@ export default function SocialPosterPage() {
     channels,
     loading,
     actionLoading,
+    refreshData,
     schedulePostOptimistic,
   } = useSocialPoster();
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
@@ -1278,9 +1279,8 @@ export default function SocialPosterPage() {
                                   status: "connected"
                                 };
                                 await addChannel(newChannel);
-                                // Refresh channels
-                                const fetchedChannels = await getChannels();
-                                setChannels(fetchedChannels);
+                                // Refresh channels via context
+                                refreshData();
                                 setIsAddChannelModalOpen(false);
                                 setSelectedNetworkToAdd(null);
                                 setAddChannelMode("easy");

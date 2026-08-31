@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { SocialPosterProvider } from "@/context/SocialPosterContext";
 import { Menu, X } from "lucide-react";
 
@@ -35,6 +36,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           {/* Main content body with responsive padding and offsets */}
           <main className="flex-1 min-h-screen p-4 md:p-8 pt-20 md:pt-8 md:ml-56 overflow-y-auto w-full max-w-full">
+            {/* Global breadcrumb — auto-generated from current route */}
+            <Breadcrumb />
             {children}
           </main>
         </div>

@@ -7,6 +7,7 @@ import { ArrowLeft, Check, X, Loader2, ShieldAlert, Pencil } from "lucide-react"
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
 import { getPendingPosts, updatePostStatus, Post } from "@/lib/firestore";
+import { isEditorOrAbove } from "@/lib/permissions";
 
 export default function Approvals() {
   const { user, role, loading: authLoading } = useAuth();
@@ -17,7 +18,7 @@ export default function Approvals() {
   const [editedContent, setEditedContent] = useState<string>("");
 
   useEffect(() => {
-    if (authLoading || role !== "admin") {
+    if (authLoading || !isEditorOrAbove(role || "")) {
       if (!authLoading) setLoading(false);
       return;
     }
@@ -77,7 +78,7 @@ export default function Approvals() {
 
   if (authLoading) return null;
 
-  if (role !== "admin") {
+  if (!isEditorOrAbove(role || "")) {
     return (
       <ProtectedRoute>
         <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center">

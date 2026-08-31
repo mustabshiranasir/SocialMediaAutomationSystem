@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { isEditorOrAbove } from "@/lib/permissions";
 
 type Post = {
   id: string;
@@ -52,7 +53,7 @@ export default function AllPosts() {
     try {
       const postsRef = collection(db, "posts");
       const q =
-        role === "admin"
+        isEditorOrAbove(role || "")
           ? query(postsRef, orderBy("createdAt", "desc"))
           : query(postsRef, where("authorId", "==", user!.uid), orderBy("createdAt", "desc"));
       const snap = await getDocs(q);
