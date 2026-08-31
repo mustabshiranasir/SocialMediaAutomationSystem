@@ -37,10 +37,10 @@ export function isContributorOrAbove(role: string): boolean {
 
 /**
  * Who can publish directly?
- * Administrator, Editor, Author.
+ * Everyone.
  */
 export function canPublishDirectly(role: string): boolean {
-  return isAuthorOrAbove(role);
+  return true;
 }
 
 /**
@@ -61,8 +61,8 @@ export function canManageUsers(role: string): boolean {
 
 /**
  * Who can compose posts?
- * Contributor and above.
+ * Everyone.
  */
 export function canCompose(role: string): boolean {
-  return isContributorOrAbove(role);
+  return true;
 }
