@@ -55,6 +55,8 @@ import {
   FaBlogger,
 } from "react-icons/fa";
 import { SiThreads, SiGoogle } from "react-icons/si";
+import { ResponsiveContainer, BarChart as ReChartsBarChart, Bar as ReChartsBar, XAxis, YAxis, Tooltip as ReChartsTooltip, CartesianGrid } from "recharts";
+
 
 // Social network config with real brand icons
 const networkOptionsAddModal = [
@@ -96,8 +98,11 @@ export default function SocialPosterPage() {
   const [loading, setLoading] = useState(true);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
 
+  const [isMounted, setIsMounted] = useState(false);
+
   // Fetch posts and channels
   useEffect(() => {
+    setIsMounted(true);
     async function loadData() {
       try {
         const fetchedPosts = await getAllPosts();
@@ -817,20 +822,22 @@ export default function SocialPosterPage() {
                       <h3 className="font-semibold text-slate-800">Posts Activity (Last 7 Days)</h3>
                       <span className="text-xs text-slate-400 bg-slate-50 border border-slate-200 px-3 py-1 rounded-full">{totalPosts} total</span>
                     </div>
-                    <div className="flex items-end gap-3 h-40">
-                      {postsPerDay.map((d, i) => (
-                        <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                          <span className="text-xs font-semibold text-slate-600">{d.count > 0 ? d.count : ""}</span>
-                          <div className="w-full flex items-end" style={{ height: "100px" }}>
-                            <div
-                              className="w-full bg-[#635BFF] rounded-t-md transition-all duration-500"
-                              style={{ height: `${(d.count / maxDay) * 100}%`, minHeight: d.count > 0 ? "6px" : "0" }}
-                            />
-                          </div>
-                          <span className="text-[10px] text-slate-400">{d.label}</span>
-                        </div>
-                      ))}
+                    <div className="h-48 w-full">
+                      {isMounted ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ReChartsBarChart data={postsPerDay} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                            <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                            <YAxis tickLine={false} axisLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} allowDecimals={false} />
+                            <ReChartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ background: '#0f172a', borderRadius: '8px', color: '#fff', border: 'none', fontSize: '12px' }} />
+                            <ReChartsBar dataKey="count" fill="#635BFF" radius={[4, 4, 0, 0]} name="Posts" />
+                          </ReChartsBarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-400">Loading chart...</div>
+                      )}
                     </div>
+
                     {totalPosts === 0 && (
                       <p className="text-center text-xs text-slate-400 mt-3">No posts yet — publish something to see activity</p>
                     )}

@@ -6,6 +6,7 @@ import { Bell, TrendingUp, CheckCircle2, Clock, FileText, Users, BarChart2 } fro
 import { useState, useEffect } from "react";
 import { getPendingPosts, getAllPosts, Post } from "@/lib/firestore";
 import Link from "next/link";
+import { Card, CardHeader, StatCard } from "@/components/ui";
 
 export default function Dashboard() {
   const { user, role } = useAuth();
@@ -22,18 +23,11 @@ export default function Dashboard() {
   const pending   = posts.filter(p => p.status === "pending").length;
 
   const stats = [
-    { label: "Total Posts",  value: String(posts.length), icon: <FileText className="w-5 h-5" />,     color: "blue"    },
-    { label: "Published",    value: String(published),    icon: <CheckCircle2 className="w-5 h-5" />, color: "emerald" },
-    { label: "Pending",      value: String(pending),      icon: <Clock className="w-5 h-5" />,        color: "amber"   },
-    ...(role === "admin" ? [{ label: "Pending Review", value: String(pendingCount), icon: <Bell className="w-5 h-5" />, color: "red" }] : []),
+    { label: "Total Posts",  value: posts.length, icon: <FileText className="w-5 h-5" />,     iconBg: "bg-blue-50", iconText: "text-blue-600", border: "border-blue-100"    },
+    { label: "Published",    value: published,    icon: <CheckCircle2 className="w-5 h-5" />, iconBg: "bg-emerald-50", iconText: "text-emerald-600", border: "border-emerald-100" },
+    { label: "Pending",      value: pending,      icon: <Clock className="w-5 h-5" />,        iconBg: "bg-amber-50", iconText: "text-amber-600", border: "border-amber-100"   },
+    ...(role === "admin" ? [{ label: "Pending Review", value: pendingCount, icon: <Bell className="w-5 h-5" />, iconBg: "bg-red-50", iconText: "text-red-600", border: "border-red-100" }] : []),
   ];
-
-  const colorMap: Record<string, { bg: string; text: string; border: string }> = {
-    blue:    { bg: "bg-blue-50",    text: "text-blue-600",    border: "border-blue-100"    },
-    emerald: { bg: "bg-emerald-50", text: "text-emerald-600", border: "border-emerald-100" },
-    amber:   { bg: "bg-amber-50",   text: "text-amber-600",   border: "border-amber-100"   },
-    red:     { bg: "bg-red-50",     text: "text-red-600",     border: "border-red-100"     },
-  };
 
   const recentPosts = [...posts]
     .sort((a, b) => (b.createdAt?.toDate?.()?.getTime() || 0) - (a.createdAt?.toDate?.()?.getTime() || 0))
@@ -65,28 +59,32 @@ export default function Dashboard() {
         </motion.div>
       )}
 
+      {/* Reusable Stat Cards from Component Library */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {stats.map((stat, i) => {
-          const c = colorMap[stat.color];
-          return (
-            <motion.div key={stat.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}
-              className={`bg-white rounded-xl p-5 border ${c.border} shadow-sm`}>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{stat.label}</span>
-                <div className={`w-8 h-8 rounded-lg ${c.bg} ${c.text} flex items-center justify-center`}>{stat.icon}</div>
-              </div>
-              <p className="text-4xl font-bold text-slate-800">{stat.value}</p>
-            </motion.div>
-          );
-        })}
+        {stats.map((stat, i) => (
+          <StatCard
+            key={stat.label}
+            label={stat.label}
+            value={stat.value}
+            icon={stat.icon}
+            iconBg={stat.iconBg}
+            iconText={stat.iconText}
+            border={stat.border}
+            delay={i * 0.07}
+          />
+        ))}
       </div>
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
-        className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm mb-6">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="font-semibold text-lg text-slate-800">Recent Posts</h2>
-          <Link href="/posts" className="text-xs text-blue-500 hover:underline font-medium">View all →</Link>
-        </div>
+      {/* Reusable Card Component from Component Library */}
+      <Card className="p-6 mb-6" delay={0.3}>
+        <CardHeader
+          title="Recent Posts"
+          action={
+            <Link href="/posts" className="text-xs text-blue-500 hover:underline font-medium">
+              View all →
+            </Link>
+          }
+        />
         {recentPosts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-slate-400 space-y-3">
             <span className="text-5xl opacity-40">📭</span>
@@ -114,7 +112,7 @@ export default function Dashboard() {
             })}
           </div>
         )}
-      </motion.div>
+      </Card>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
         className="grid grid-cols-3 gap-4">
@@ -133,3 +131,4 @@ export default function Dashboard() {
     </div>
   );
 }
+
