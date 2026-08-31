@@ -59,7 +59,7 @@ export async function getCredentials(userId: string): Promise<SocialAccountsData
   return null;
 }
 
-export type PostStatus = "pending" | "published" | "rejected";
+export type PostStatus = "pending" | "published" | "rejected" | "scheduled";
 
 export type Post = {
   id?: string;
@@ -68,6 +68,7 @@ export type Post = {
   authorId: string;
   authorEmail: string;
   status: PostStatus;
+  scheduledAt?: any;
   createdAt: any;
 };
 
@@ -78,6 +79,19 @@ export async function createPendingPost(post: Omit<Post, "id" | "status" | "crea
     status: "pending",
     createdAt: serverTimestamp(),
   });
+}
+
+/**
+ * Creates a new scheduled post for a user.
+ */
+export async function createScheduledPost(post: Omit<Post, "id" | "status" | "createdAt">) {
+  const postsRef = collection(db, "posts");
+  const docRef = await addDoc(postsRef, {
+    ...post,
+    status: "scheduled",
+    createdAt: serverTimestamp(),
+  });
+  return docRef.id;
 }
 
 /**
@@ -107,6 +121,19 @@ export async function getPendingPosts(): Promise<Post[]> {
 }
 
 /**
+ * Fetches all posts.
+ */
+export async function getAllPosts(): Promise<Post[]> {
+  const postsRef = collection(db, "posts");
+  const snap = await getDocs(postsRef);
+  
+  return snap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  } as Post));
+}
+
+/**
  * Updates a post status.
  */
 export async function updatePostStatus(postId: string, status: PostStatus) {
@@ -128,4 +155,36 @@ export async function getUserRole(userId: string): Promise<"admin" | "user"> {
     return userSnap.data().role || "user";
   }
   return "user";
+}
+
+export type Channel = {
+  id?: string;
+  name: string;
+  network: string; // e.g. "fb", "ig", "li"
+  isAutoShare: boolean;
+  status: "connected" | "disconnected" | "error";
+  accountId?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  scopes?: string[];
+  tokenExpiry?: number;
+  createdAt: any;
+};
+
+export async function addChannel(channel: Omit<Channel, "id" | "createdAt">) {
+  const channelsRef = collection(db, "channels");
+  await addDoc(channelsRef, {
+    ...channel,
+    createdAt: serverTimestamp(),
+  });
+}
+
+export async function getChannels(): Promise<Channel[]> {
+  const channelsRef = collection(db, "channels");
+  const snap = await getDocs(channelsRef);
+  
+  return snap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  } as Channel));
 }

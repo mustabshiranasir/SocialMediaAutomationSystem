@@ -64,11 +64,6 @@ export default function Sidebar() {
       icon: <MessageSquare className="w-4 h-4" />,
     },
     {
-      label: "Analytics",
-      href: "/analytics",
-      icon: <BarChart2 className="w-4 h-4" />,
-    },
-    {
       label: "Approvals",
       href: "/approvals",
       icon: <ShieldCheck className="w-4 h-4" />,
@@ -85,6 +80,11 @@ export default function Sidebar() {
       href: "/team",
       icon: <Users className="w-4 h-4" />,
       adminOnly: true,
+    },
+    {
+      label: "Social Poster",
+      href: "/social-poster",
+      icon: <img src="/fs-poster-logo.png" alt="Social Poster" className="w-4 h-4 rounded object-cover" />,
     },
     {
       label: "Settings",
@@ -116,10 +116,10 @@ export default function Sidebar() {
       {/* Brand */}
       <div className="px-4 py-5 border-b border-white/5">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shadow-lg shadow-blue-500/30">
-            <PenSquare className="w-4 h-4 text-white" />
+          <div className="w-8 h-8 rounded-lg overflow-hidden shadow-lg flex-shrink-0">
+            <img src="/fs-poster-logo.png" alt="Social Auto" className="w-full h-full object-cover" />
           </div>
-          <span className="font-bold text-base tracking-tight text-white">SocialAuto</span>
+          <span className="font-bold text-base tracking-tight text-white">Social Auto</span>
         </Link>
       </div>
 
