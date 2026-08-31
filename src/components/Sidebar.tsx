@@ -21,11 +21,16 @@ type NavItem = {
   children?: { label: string; href: string }[];
 };
 
-export default function Sidebar() {
+interface SidebarProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user, role, logout } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
-  const [openMenus, setOpenMenus] = useState<string[]>(["Posts", "Media"]);
+  const [openMenus, setOpenMenus] = useState<string[]>([]);
 
   useEffect(() => {
     if (role !== "admin") return;
@@ -110,9 +115,20 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="fixed top-0 left-0 h-screen w-56 flex flex-col z-40 border-r border-white/5"
-      style={{ background: "linear-gradient(180deg, #0f1117 0%, #111827 100%)" }}
-    >
+    <>
+      {/* Mobile Drawer Backdrop Overlay */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs z-35 md:hidden"
+          onClick={onClose}
+        />
+      )}
+
+      <aside className={`fixed top-0 bottom-0 left-0 h-screen w-56 flex flex-col z-40 border-r border-white/5 transition-transform duration-300 md:translate-x-0 ${
+        isOpen ? "translate-x-0" : "-translate-x-full"
+      }`}
+        style={{ background: "linear-gradient(180deg, #0f1117 0%, #111827 100%)" }}
+      >
       {/* Brand */}
       <div className="px-4 py-5 border-b border-white/5">
         <Link href="/" className="flex items-center gap-2.5">
@@ -163,6 +179,7 @@ export default function Sidebar() {
                           <Link
                             key={child.href}
                             href={child.href}
+                            onClick={onClose}
                             className={`block px-3 py-1.5 rounded-lg text-sm transition-colors
                               ${isActive(child.href)
                                 ? "text-white font-semibold bg-primary/10"
@@ -185,6 +202,7 @@ export default function Sidebar() {
             <Link
               key={item.label}
               href={item.href!}
+              onClick={onClose}
               className={`relative flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors group
                 ${isActive(item.href!)
                   ? "bg-primary/20 text-white"
@@ -239,5 +257,6 @@ export default function Sidebar() {
         </div>
       </div>
     </aside>
+    </>
   );
 }

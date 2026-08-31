@@ -106,9 +106,17 @@ export default function SocialPosterPage() {
 
   const [isMounted, setIsMounted] = useState(false);
 
-  // Set mount status and handle url parameters
+  // Set mount status, handle resizing, and handle url parameters
   useEffect(() => {
     setIsMounted(true);
+
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        setDisplayMode("list");
+      }
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
     
     // Check for OAuth callback parameters
     if (typeof window !== "undefined") {
@@ -126,6 +134,8 @@ export default function SocialPosterPage() {
         window.history.replaceState({}, document.title, window.location.pathname);
       }
     }
+
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
 
