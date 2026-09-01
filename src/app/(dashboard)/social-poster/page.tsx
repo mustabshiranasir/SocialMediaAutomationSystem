@@ -40,7 +40,7 @@ import {
   ExternalLink as ExtLink,
   Eye,
 } from "lucide-react";
-import { getAllPosts, getChannels, addChannel, Post, Channel } from "@/lib/firestore";
+import { getAllPosts, getChannels, addChannel, getContentIdeas, addContentIdea, updateContentIdea, deleteContentIdea, Post, Channel } from "@/lib/firestore";
 import Image from "next/image";
 import { useSocialPoster } from "@/context/SocialPosterContext";
 
@@ -2025,7 +2025,7 @@ function ContentIdeasTabSection({ onScheduleToChannels }: { onScheduleToChannels
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [previewIdeaModal, setPreviewIdeaModal] = useState<any | null>(null);
@@ -2048,15 +2048,9 @@ function ContentIdeasTabSection({ onScheduleToChannels }: { onScheduleToChannels
     setLoading(true);
     try {
       const q = searchQuery !== undefined ? searchQuery : search;
-      const res = await fetch(`http://localhost:8000/api/content-ideas${q ? `?search=${encodeURIComponent(q)}` : ''}`);
-      if (res.ok) {
-        const data = await res.json();
-        setIdeas(Array.isArray(data) ? data : []);
-        setIdeasCount(Array.isArray(data) ? data.length : 0);
-      } else {
-        setIdeas([]);
-        setIdeasCount(0);
-      }
+      const data = await getContentIdeas(q);
+      setIdeas(data);
+      setIdeasCount(data.length);
     } catch (e) {
       console.error("fetchIdeas error:", e);
       setIdeas([]);
@@ -2084,39 +2078,32 @@ function ContentIdeasTabSection({ onScheduleToChannels }: { onScheduleToChannels
 
     setIsSubmitting(true);
     try {
-      const res = await fetch("http://localhost:8000/api/content-ideas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: formTitle,
-          content_preview: formContent,
-          platforms: formPlatforms,
-          status: formStatus,
-          tags: formTags,
-          link_url: formLinkUrl,
-          first_comment: formFirstComment,
-          is_starred: formIsStarred,
-          media_url: mediaPreviewUrl || ""
-        })
+      await addContentIdea({
+        title: formTitle,
+        content_preview: formContent,
+        platforms: formPlatforms,
+        status: formStatus as any,
+        tags: formTags,
+        link_url: formLinkUrl,
+        first_comment: formFirstComment,
+        is_starred: formIsStarred,
+        media_url: mediaPreviewUrl || "",
+        created_by: "Admin"
       });
 
-      if (res.ok) {
-        setIsCreateModalOpen(false);
-        setFormTitle("");
-        setFormContent("");
-        setFormTags("");
-        setFormLinkUrl("");
-        setFormFirstComment("");
-        setFormIsStarred(false);
-        setMediaFile(null);
-        setMediaPreviewUrl("");
-        fetchIdeas();
-      } else {
-        alert("Failed to create idea. Please check backend API.");
-      }
+      setIsCreateModalOpen(false);
+      setFormTitle("");
+      setFormContent("");
+      setFormTags("");
+      setFormLinkUrl("");
+      setFormFirstComment("");
+      setFormIsStarred(false);
+      setMediaFile(null);
+      setMediaPreviewUrl("");
+      fetchIdeas();
     } catch (err) {
       console.error(err);
-      alert("Error creating idea.");
+      alert("Error creating idea in Firestore.");
     } finally {
       setIsSubmitting(false);
     }
@@ -2126,28 +2113,24 @@ function ContentIdeasTabSection({ onScheduleToChannels }: { onScheduleToChannels
     if (e) e.stopPropagation();
     try {
       const newStarred = !idea.is_starred;
-      await fetch(`http://localhost:8000/api/content-ideas/${idea.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_starred: newStarred })
-      });
-      fetchIdeas();
-      if (previewIdeaModal && previewIdeaModal.id === idea.id) {
-        setPreviewIdeaModal({ ...previewIdeaModal, is_starred: newStarred });
+      if (idea.id) {
+        await updateContentIdea(idea.id, { is_starred: newStarred });
+        fetchIdeas();
+        if (previewIdeaModal && previewIdeaModal.id === idea.id) {
+          setPreviewIdeaModal({ ...previewIdeaModal, is_starred: newStarred });
+        }
       }
     } catch (e) {
       console.error("Star toggle error:", e);
     }
   };
 
-  const handleDeleteIdea = async (id: number) => {
+  const handleDeleteIdea = async (id: string) => {
     if (!confirm("Are you sure you want to delete this content idea?")) return;
     try {
-      const res = await fetch(`http://localhost:8000/api/content-ideas/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        if (previewIdeaModal?.id === id) setPreviewIdeaModal(null);
-        fetchIdeas();
-      }
+      await deleteContentIdea(id);
+      if (previewIdeaModal?.id === id) setPreviewIdeaModal(null);
+      fetchIdeas();
     } catch (e) {
       console.error("Delete error:", e);
     }

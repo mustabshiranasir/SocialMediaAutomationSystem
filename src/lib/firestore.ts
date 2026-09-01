@@ -188,3 +188,73 @@ export async function getChannels(): Promise<Channel[]> {
     ...doc.data()
   } as Channel));
 }
+
+export type ContentIdeaFirestore = {
+  id?: string;
+  title: string;
+  content_preview: string;
+  platforms: string[];
+  status: "Draft" | "Scheduled" | "Published";
+  tags?: string;
+  link_url?: string;
+  first_comment?: string;
+  is_starred?: boolean;
+  media_url?: string;
+  created_by?: string;
+  created_at?: any;
+};
+
+/**
+ * Fetches all Content Ideas from Firestore
+ */
+export async function getContentIdeas(searchQuery?: string): Promise<ContentIdeaFirestore[]> {
+  const ideasRef = collection(db, "content_ideas");
+  const snap = await getDocs(ideasRef);
+  
+  let list = snap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  } as ContentIdeaFirestore));
+
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    list = list.filter(item =>
+      item.title.toLowerCase().includes(q) ||
+      item.content_preview.toLowerCase().includes(q)
+    );
+  }
+
+  return list;
+}
+
+/**
+ * Adds a new Content Idea to Firestore
+ */
+export async function addContentIdea(idea: Omit<ContentIdeaFirestore, "id" | "created_at">) {
+  const ideasRef = collection(db, "content_ideas");
+  const docRef = await addDoc(ideasRef, {
+    ...idea,
+    created_at: serverTimestamp(),
+  });
+  return docRef.id;
+}
+
+/**
+ * Updates a Content Idea in Firestore (e.g. toggle star or edit details)
+ */
+export async function updateContentIdea(id: string, updates: Partial<ContentIdeaFirestore>) {
+  const ideaRef = doc(db, "content_ideas", id);
+  await updateDoc(ideaRef, {
+    ...updates,
+    updatedAt: serverTimestamp()
+  });
+}
+
+/**
+ * Deletes a Content Idea from Firestore
+ */
+export async function deleteContentIdea(id: string) {
+  const ideaRef = doc(db, "content_ideas", id);
+  const { deleteDoc } = await import("firebase/firestore");
+  await deleteDoc(ideaRef);
+}
