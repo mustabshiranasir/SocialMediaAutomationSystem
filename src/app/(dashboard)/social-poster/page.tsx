@@ -23,6 +23,7 @@ import {
   X,
   ExternalLink,
   Trash2,
+  Pencil,
   RefreshCw,
   BarChart,
   ChevronDown,
@@ -39,6 +40,7 @@ import {
   Link2,
   ExternalLink as ExtLink,
   Eye,
+  Sparkles,
 } from "lucide-react";
 import { getAllPosts, getChannels, addChannel, getContentIdeas, addContentIdea, updateContentIdea, deleteContentIdea, Post, Channel } from "@/lib/firestore";
 import Image from "next/image";
@@ -56,6 +58,8 @@ import {
   FaYoutube,
   FaWordpress,
   FaBlogger,
+  FaGoogle,
+  FaTwitter,
 } from "react-icons/fa";
 import { SiThreads, SiGoogle } from "react-icons/si";
 import { ResponsiveContainer, BarChart as ReChartsBarChart, Bar as ReChartsBar, XAxis, YAxis, Tooltip as ReChartsTooltip, CartesianGrid } from "recharts";
@@ -64,6 +68,7 @@ import { ResponsiveContainer, BarChart as ReChartsBarChart, Bar as ReChartsBar, 
 // Social network config with real brand icons
 const networkOptionsAddModal = [
   { id: "fb",  name: "Facebook",          Icon: FaFacebook,        iconColor: "text-white",    bg: "bg-blue-600",    signInUrl: "/api/oauth/login?network=fb" },
+  { id: "tw",  name: "X (Twitter)",       Icon: FaTwitter,         iconColor: "text-white",    bg: "bg-slate-900",   signInUrl: "/api/oauth/login?network=tw" },
   { id: "ig",  name: "Instagram",         Icon: FaInstagram,       iconColor: "text-white",    bg: "bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600", signInUrl: "/api/oauth/login?network=ig" },
   { id: "tk",  name: "Tiktok",            Icon: FaTiktok,          iconColor: "text-white",    bg: "bg-black",       signInUrl: "/api/oauth/login?network=tk" },
   { id: "th",  name: "Threads",           Icon: SiThreads,         iconColor: "text-white",    bg: "bg-neutral-900", signInUrl: "/api/oauth/login?network=th" },
@@ -101,7 +106,9 @@ export default function SocialPosterPage() {
     channels,
     loading,
     actionLoading,
+    currentUserId,
     refreshData,
+    refreshChannels,
     schedulePostOptimistic,
   } = useSocialPoster();
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
@@ -153,6 +160,207 @@ export default function SocialPosterPage() {
   const [isAddChannelModalOpen, setIsAddChannelModalOpen] = useState(false);
   const [selectedNetworkToAdd, setSelectedNetworkToAdd] = useState<any>(null);
   const [addChannelMode, setAddChannelMode] = useState<"easy" | "advanced">("easy");
+  const [fbMethodTab, setFbMethodTab] = useState<"app" | "cookie">("app");
+  const [cookieCUser, setCookieCUser] = useState("");
+  const [cookieXs, setCookieXs] = useState("");
+  const [cookieDatr, setCookieDatr] = useState("");
+  const [cookieSubmitting, setCookieSubmitting] = useState(false);
+  const [cookieError, setCookieError] = useState<string | null>(null);
+  const [cookieSuccess, setCookieSuccess] = useState<string | null>(null);
+
+  // Twitter connection states
+  const [twitterMethodTab, setTwitterMethodTab] = useState<"app" | "cookie">("app");
+  const [twitterAuthToken, setTwitterAuthToken] = useState("");
+  const [twitterCt0, setTwitterCt0] = useState("");
+  const [twitterSubmitting, setTwitterSubmitting] = useState(false);
+  const [twitterError, setTwitterError] = useState<string | null>(null);
+  const [twitterSuccess, setTwitterSuccess] = useState<string | null>(null);
+
+  // Settings tab states (Story Customization matching FS Poster)
+  const [activeSettingsMenu, setActiveSettingsMenu] = useState<
+    "General" | "Apps" | "Auto share" | "AI Settings" | "Watermark & Templates" | "Import & Export" | "System Information" | "Notifications" | "Facebook"
+  >("General");
+  const [settingsSubTab, setSettingsSubTab] = useState<"General" | "Post Customization" | "Story Customization">("Story Customization");
+
+  // General Settings state matching Reference Screenshots
+  const [whoCanAccess, setWhoCanAccess] = useState<"every_user" | "only_selected">("every_user");
+  const [selectedRoles, setSelectedRoles] = useState<string[]>(["Administrator"]);
+  const [allowedPostTypes, setAllowedPostTypes] = useState<string[]>(["Posts", "Pages", "Media"]);
+  const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
+  const [isPostTypeDropdownOpen, setIsPostTypeDropdownOpen] = useState(false);
+  const roleDropdownRef = useRef<HTMLDivElement>(null);
+  const postTypeDropdownRef = useRef<HTMLDivElement>(null);
+
+  const [configureCron, setConfigureCron] = useState(true);
+  const [cronCommand, setCronCommand] = useState("wget -O /dev/null https://smm.clicktaketech.com/wp-cron.php?doing_wp_cron > /dev/null 2>&1");
+  const [lastCronTimestamp, setLastCronTimestamp] = useState<number>(() => Date.now() - 4000);
+  const [lastCronFormatted, setLastCronFormatted] = useState("4s ago");
+  const [isSavingGeneral, setIsSavingGeneral] = useState(false);
+  const [generalSaveSuccess, setGeneralSaveSuccess] = useState(false);
+  const [copiedCron, setCopiedCron] = useState(false);
+
+  const availableRolesList = ["Administrator", "Editor", "Author", "Contributor", "Subscriber"];
+  const availablePostTypesList = ["Posts", "Pages", "Media"];
+
+  // Social Apps states (Backend connected, default empty)
+  const [socialApps, setSocialApps] = useState<any[]>([]);
+  const [selectedAppIds, setSelectedAppIds] = useState<string[]>([]);
+  const [isAddAppModalOpen, setIsAddAppModalOpen] = useState(false);
+  const [selectedNetworkForApp, setSelectedNetworkForApp] = useState<any>(null);
+  const [appNameInput, setAppNameInput] = useState("");
+  const [appIdInput, setAppIdInput] = useState("");
+  const [appSecretInput, setAppSecretInput] = useState("");
+  const [isSubmittingApp, setIsSubmittingApp] = useState(false);
+  const [appSaveSuccess, setAppSaveSuccess] = useState(false);
+
+  // Facebook Settings states (Matching Images 1, 2, 3)
+  const [fbImportComments, setFbImportComments] = useState(true);
+  const [fbFetchTimeframe, setFbFetchTimeframe] = useState<"Last week" | "Last 2 weeks" | "Last 3 weeks" | "Last month">("Last week");
+  const [fbCustomMessage, setFbCustomMessage] = useState("{title}\n\n{excerpt}\n\n{url}");
+  const [fbUploadImages, setFbUploadImages] = useState(false);
+  const [fbAttachLink, setFbAttachLink] = useState(true);
+  const [fbEnableFirstComment, setFbEnableFirstComment] = useState(true);
+  const [fbFirstCommentText, setFbFirstCommentText] = useState("@followers");
+  const [isKeywordMenuOpen, setIsKeywordMenuOpen] = useState(false);
+
+  // Facebook Story Customization states (Matching Images 1, 2, 3, 4)
+  const [fbStoryText, setFbStoryText] = useState("{title}");
+  const [fbStoryCapitalize, setFbStoryCapitalize] = useState(true);
+  const [fbStoryUrlEncode, setFbStoryUrlEncode] = useState(true);
+  const [fbStoryAttachLink, setFbStoryAttachLink] = useState(true);
+  const [fbStoryTagSettingsOpen, setFbStoryTagSettingsOpen] = useState(false);
+
+  const [storyBgColor, setStoryBgColor] = useState("#636e72");
+  const [storyTitleBgColor, setStoryTitleBgColor] = useState("#000000");
+  const [storyTitleOpacity, setStoryTitleOpacity] = useState(30);
+  const [storyTitleColor, setStoryTitleColor] = useState("#FFFFFF");
+  const [storyTopOffset, setStoryTopOffset] = useState(125);
+  const [storyLeftOffset, setStoryLeftOffset] = useState(30);
+  const [storyWidth, setStoryWidth] = useState(660);
+  const [storyFontSize, setStoryFontSize] = useState(30);
+  const [storyFontFamily, setStoryFontFamily] = useState("ABeeZee");
+  const [storyRtlMode, setStoryRtlMode] = useState(false);
+  const [isStoryKeywordMenuOpen, setIsStoryKeywordMenuOpen] = useState(false);
+
+  const fontFamilyList = [
+    "ABeeZee",
+    "ADLaM Display",
+    "AR One Sans",
+    "Abel",
+    "Abhaya Libre",
+    "Aboreto",
+    "Abril Fatface",
+    "Abyssinica SIL",
+    "Aclonica",
+  ];
+
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsSavedSuccess, setSettingsSavedSuccess] = useState(false);
+
+  // Realtime Cron Timer Ticker (calculates "Xs ago" every second)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const diffSec = Math.floor((Date.now() - lastCronTimestamp) / 1000);
+      if (diffSec < 60) {
+        setLastCronFormatted(`${diffSec}s ago`);
+      } else if (diffSec < 3600) {
+        setLastCronFormatted(`${Math.floor(diffSec / 60)}m ago`);
+      } else {
+        setLastCronFormatted(`${Math.floor(diffSec / 3600)}h ago`);
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lastCronTimestamp]);
+
+  // Realtime Cron Execution Worker (Pings /api/cron every 30 seconds when enabled)
+  useEffect(() => {
+    if (!configureCron) return;
+
+    const cronWorker = setInterval(async () => {
+      try {
+        const res = await fetch("/api/cron");
+        if (res.ok) {
+          setLastCronTimestamp(Date.now());
+        }
+      } catch (err) {
+        console.warn("Realtime cron ping failed:", err);
+      }
+    }, 30000);
+
+    return () => clearInterval(cronWorker);
+  }, [configureCron]);
+
+  // Click outside listener for dropdowns
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (roleDropdownRef.current && !roleDropdownRef.current.contains(event.target as Node)) {
+        setIsRoleDropdownOpen(false);
+      }
+      if (postTypeDropdownRef.current && !postTypeDropdownRef.current.contains(event.target as Node)) {
+        setIsPostTypeDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Load General Settings, Social Apps & Facebook Settings from Firestore on mount/user change
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        const { auth } = await import("@/lib/firebase");
+        const { getGeneralSettings, getSocialApps, getFacebookSettings } = await import("@/lib/firestore");
+        if (auth.currentUser) {
+          const gs = await getGeneralSettings(auth.currentUser.uid);
+          setWhoCanAccess(gs.whoCanAccess || "every_user");
+          setSelectedRoles(gs.selectedRoles || ["Administrator"]);
+          setAllowedPostTypes(gs.allowedPostTypes || ["Posts", "Pages", "Media"]);
+          setConfigureCron(gs.configureCron !== undefined ? gs.configureCron : true);
+          if (gs.cronCommand) setCronCommand(gs.cronCommand);
+
+          const dbApps = await getSocialApps(auth.currentUser.uid);
+          if (dbApps && dbApps.length > 0) {
+            setSocialApps(dbApps);
+          }
+
+          const fbSettings = await getFacebookSettings(auth.currentUser.uid);
+          if (fbSettings) {
+            if (fbSettings.general) {
+              setFbImportComments(fbSettings.general.importComments !== undefined ? fbSettings.general.importComments : true);
+              if (fbSettings.general.fetchCommentsTimeframe) setFbFetchTimeframe(fbSettings.general.fetchCommentsTimeframe);
+            }
+            if (fbSettings.postCustomization) {
+              if (fbSettings.postCustomization.customMessage) setFbCustomMessage(fbSettings.postCustomization.customMessage);
+              setFbUploadImages(fbSettings.postCustomization.uploadPostImages || false);
+              setFbAttachLink(fbSettings.postCustomization.attachLink !== undefined ? fbSettings.postCustomization.attachLink : true);
+              setFbEnableFirstComment(fbSettings.postCustomization.enableFirstComment !== undefined ? fbSettings.postCustomization.enableFirstComment : true);
+              if (fbSettings.postCustomization.firstCommentText) setFbFirstCommentText(fbSettings.postCustomization.firstCommentText);
+            }
+            if (fbSettings.storyCustomization) {
+              if (fbSettings.storyCustomization.storyText) setFbStoryText(fbSettings.storyCustomization.storyText);
+              setFbStoryCapitalize(fbSettings.storyCustomization.capitalizeStoryText !== undefined ? fbSettings.storyCustomization.capitalizeStoryText : true);
+              setFbStoryUrlEncode(fbSettings.storyCustomization.urlEncodeStoryText !== undefined ? fbSettings.storyCustomization.urlEncodeStoryText : true);
+              setFbStoryAttachLink(fbSettings.storyCustomization.attachStoryLink !== undefined ? fbSettings.storyCustomization.attachStoryLink : true);
+              if (fbSettings.storyCustomization.backgroundColor) setStoryBgColor(fbSettings.storyCustomization.backgroundColor);
+              if (fbSettings.storyCustomization.titleBackgroundColor) setStoryTitleBgColor(fbSettings.storyCustomization.titleBackgroundColor);
+              if (fbSettings.storyCustomization.titleBackgroundOpacity !== undefined) setStoryTitleOpacity(fbSettings.storyCustomization.titleBackgroundOpacity);
+              if (fbSettings.storyCustomization.titleColor) setStoryTitleColor(fbSettings.storyCustomization.titleColor);
+              if (fbSettings.storyCustomization.titleTopOffset !== undefined) setStoryTopOffset(fbSettings.storyCustomization.titleTopOffset);
+              if (fbSettings.storyCustomization.titleLeftOffset !== undefined) setStoryLeftOffset(fbSettings.storyCustomization.titleLeftOffset);
+              if (fbSettings.storyCustomization.titleWidth !== undefined) setStoryWidth(fbSettings.storyCustomization.titleWidth);
+              if (fbSettings.storyCustomization.titleFontSize !== undefined) setStoryFontSize(fbSettings.storyCustomization.titleFontSize);
+              if (fbSettings.storyCustomization.titleFontFamily) setStoryFontFamily(fbSettings.storyCustomization.titleFontFamily);
+              setStoryRtlMode(fbSettings.storyCustomization.titleRtlMode || false);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load general settings:", err);
+      }
+    }
+    loadSettings();
+  }, [currentUserId]);
+
   const [isChannelFilterOpen, setIsChannelFilterOpen] = useState(false);
   const channelFilterRef = useRef<HTMLDivElement>(null);
 
@@ -1065,7 +1273,7 @@ export default function SocialPosterPage() {
                   </div>
                   
                   {networkOptionsAddModal.map((net) => {
-                    const count = channels.filter(c => c.network === net.id).length;
+                    const count = channels.filter(c => c.network === net.id || (net.id === "tw" && (c.network === "twitter" || c.network === "x"))).length;
                     return (
                       <div key={net.id} className="p-4 border-b border-slate-100 hover:bg-slate-50 flex items-center justify-between cursor-pointer last:border-b-0">
                         <div className="flex items-center gap-3">
@@ -1096,7 +1304,7 @@ export default function SocialPosterPage() {
                           <td className="p-4"><input type="checkbox" className="rounded border-slate-300" /></td>
                           <td className="p-4">
                             <div className="flex items-center gap-3">
-                              <NetAvatar net={networkOptionsAddModal.find(n => n.id === channel.network) || networkOptionsAddModal[0]} size="sm" />
+                              <NetAvatar net={networkOptionsAddModal.find(n => n.id === channel.network || (n.id === "tw" && (channel.network === "twitter" || channel.network === "x"))) || networkOptionsAddModal[0]} size="sm" />
                               <div>
                                 <p className="font-semibold text-slate-700 text-sm">{channel.name}</p>
                                 <div className="flex items-center gap-1.5 mt-0.5">
@@ -1118,7 +1326,22 @@ export default function SocialPosterPage() {
                               <button className="p-1.5 text-slate-400 hover:text-blue-600 rounded bg-white border border-slate-200 hover:border-blue-200 shadow-sm transition-colors">
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
-                              <button className="p-1.5 text-slate-400 hover:text-red-600 rounded bg-white border border-slate-200 hover:border-red-200 shadow-sm transition-colors">
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const { deleteDoc, doc } = await import("firebase/firestore");
+                                    const { db } = await import("@/lib/firebase");
+                                    if (channel.id) {
+                                      await deleteDoc(doc(db, "channels", channel.id));
+                                      refreshChannels();
+                                    }
+                                  } catch (err) {
+                                    console.error("Delete channel error:", err);
+                                  }
+                                }}
+                                className="p-1.5 text-slate-400 hover:text-red-600 rounded bg-white border border-slate-200 hover:border-red-200 shadow-sm transition-colors"
+                                title="Delete Channel"
+                              >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
@@ -1145,6 +1368,1537 @@ export default function SocialPosterPage() {
           {/* Content Ideas Tab */}
           {activeTab === "Content Ideas" && (
             <ContentIdeasTabSection onScheduleToChannels={() => setIsAddChannelModalOpen(true)} />
+          )}
+
+          {/* Settings Tab — FS Poster Style */}
+          {activeTab === "Settings" && (
+            <motion.div
+              key="settings-tab"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="flex gap-6 h-full min-h-[650px]"
+            >
+              {/* Left Sidebar for Settings Menu */}
+              <div className="w-64 bg-white border border-slate-200 rounded-xl p-3 space-y-1 shrink-0 h-fit">
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 py-2">General Settings</div>
+                {[
+                  { id: "General", label: "General", icon: Settings },
+                  { id: "Apps", label: "Apps", icon: LayoutGrid },
+                  { id: "Auto share", label: "Auto share", icon: CalendarIcon },
+                  { id: "AI Settings", label: "AI Settings", icon: Sparkles },
+                  { id: "Watermark & Templates", label: "Watermark & Templates", icon: Edit2 },
+                  { id: "Import & Export", label: "Import & Export", icon: ExternalLink },
+                  { id: "System Information", label: "System Information", icon: AlertCircle },
+                  { id: "Notifications", label: "Notifications", icon: Bell },
+                ].map(item => (
+                  <div
+                    key={item.id}
+                    onClick={() => setActiveSettingsMenu(item.id as any)}
+                    className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
+                      activeSettingsMenu === item.id
+                        ? "bg-blue-50 text-blue-600"
+                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                    }`}
+                  >
+                    <item.icon className="w-4 h-4" />
+                    <span>{item.label}</span>
+                  </div>
+                ))}
+                
+                <div className="pt-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 py-2">Social Networks</div>
+                <div
+                  onClick={() => setActiveSettingsMenu("Facebook")}
+                  className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
+                    activeSettingsMenu === "Facebook"
+                      ? "bg-blue-50 text-blue-600"
+                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <FaFacebook className="text-sm text-blue-600" />
+                    <span>Facebook</span>
+                  </div>
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                </div>
+              </div>
+
+              {/* Right Main Settings Area */}
+              <div className="flex-1 bg-white border border-slate-200 rounded-xl p-8 overflow-y-auto flex flex-col justify-between">
+                <div>
+                  {activeSettingsMenu === "General" && (
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        setIsSavingGeneral(true);
+                        setGeneralSaveSuccess(false);
+                        try {
+                          const { auth } = await import("@/lib/firebase");
+                          const { saveGeneralSettings } = await import("@/lib/firestore");
+                          if (auth.currentUser) {
+                            await saveGeneralSettings(auth.currentUser.uid, {
+                              whoCanAccess,
+                              selectedRoles,
+                              allowedPostTypes,
+                              configureCron,
+                              cronCommand,
+                              lastCronRunTime: lastCronFormatted,
+                            });
+                          }
+                          setGeneralSaveSuccess(true);
+                          setTimeout(() => setGeneralSaveSuccess(false), 3000);
+                        } catch (err) {
+                          console.error("Save general settings error:", err);
+                        } finally {
+                          setIsSavingGeneral(false);
+                        }
+                      }}
+                      className="space-y-8 max-w-3xl"
+                    >
+                      {/* Title */}
+                      <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Settings</h2>
+
+                      {/* 1. Who can access Social Poster? */}
+                      <div className="flex items-start justify-between pb-8 border-b border-slate-100">
+                        <div className="max-w-xs">
+                          <h3 className="text-base font-bold text-slate-800">Who can access Social Poster?</h3>
+                          <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                            Selected roles will be able to access Social Poster.
+                          </p>
+                        </div>
+                        <div className="space-y-4 min-w-[280px]">
+                          {/* Radio Option 1: Every user */}
+                          <label className="flex items-center gap-3 cursor-pointer group">
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                              whoCanAccess === "every_user" ? "border-emerald-500 bg-white" : "border-slate-300"
+                            }`}>
+                              {whoCanAccess === "every_user" && <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>}
+                            </div>
+                            <input
+                              type="radio"
+                              name="whoCanAccess"
+                              className="hidden"
+                              checked={whoCanAccess === "every_user"}
+                              onChange={() => setWhoCanAccess("every_user")}
+                            />
+                            <span className="text-sm font-semibold text-slate-700">Every user</span>
+                          </label>
+
+                          {/* Radio Option 2: Only selected user roles */}
+                          <label className="flex items-center gap-3 cursor-pointer group">
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                              whoCanAccess === "only_selected" ? "border-emerald-500 bg-white" : "border-slate-300"
+                            }`}>
+                              {whoCanAccess === "only_selected" && <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>}
+                            </div>
+                            <input
+                              type="radio"
+                              name="whoCanAccess"
+                              className="hidden"
+                              checked={whoCanAccess === "only_selected"}
+                              onChange={() => setWhoCanAccess("only_selected")}
+                            />
+                            <span className="text-sm font-semibold text-slate-700">Only selected user roles</span>
+                          </label>
+
+                          {/* Role Select Input Box & Dropdown (Matching Screenshot 1) */}
+                          {whoCanAccess === "only_selected" && (
+                            <div className="relative pt-1" ref={roleDropdownRef}>
+                              <div
+                                onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
+                                className={`w-full min-h-[42px] border-2 rounded-xl p-1.5 bg-white flex flex-wrap gap-1.5 items-center cursor-pointer transition-all ${
+                                  isRoleDropdownOpen ? "border-blue-500 shadow-sm" : "border-blue-400/80 hover:border-blue-500"
+                                }`}
+                              >
+                                {selectedRoles.map(role => (
+                                  <span key={role} className="bg-slate-200 text-slate-800 text-xs font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1">
+                                    {role}
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedRoles(prev => prev.filter(r => r !== role));
+                                      }}
+                                      className="hover:bg-slate-300 rounded-full p-0.5"
+                                    >
+                                      <X className="w-3 h-3 text-slate-600" />
+                                    </button>
+                                  </span>
+                                ))}
+                                <span className="text-slate-400 text-xs px-1 select-none">
+                                  {selectedRoles.length === 0 ? "Select roles" : ""}
+                                </span>
+                              </div>
+
+                              {/* Floating Dropdown List (Matching Screenshot 1) */}
+                              <AnimatePresence>
+                                {isRoleDropdownOpen && (
+                                  <motion.div
+                                    initial={{ opacity: 0, y: 4 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 4 }}
+                                    className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-2 space-y-0.5 overflow-hidden"
+                                  >
+                                    {availableRolesList.map(role => {
+                                      const isSelected = selectedRoles.includes(role);
+                                      return (
+                                        <div
+                                          key={role}
+                                          onClick={() => {
+                                            if (isSelected) {
+                                              setSelectedRoles(prev => prev.filter(r => r !== role));
+                                            } else {
+                                              setSelectedRoles(prev => [...prev, role]);
+                                            }
+                                          }}
+                                          className="flex items-center gap-3 px-4 py-2 hover:bg-slate-50 cursor-pointer transition-colors"
+                                        >
+                                          <div className={`w-4 h-4 rounded flex items-center justify-center transition-all ${
+                                            isSelected ? "bg-emerald-500 text-white" : "border-2 border-slate-300"
+                                          }`}>
+                                            {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                                          </div>
+                                          <span className="text-xs font-semibold text-slate-700">{role}</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 2. Allowed post types (Matching Screenshot 2) */}
+                      <div className="flex items-start justify-between pb-8 border-b border-slate-100">
+                        <div className="max-w-xs">
+                          <h3 className="text-base font-bold text-slate-800">Allowed post types</h3>
+                          <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                            Specify the post types you wish to share across your social networks.
+                          </p>
+                        </div>
+                        <div className="w-full max-w-sm relative" ref={postTypeDropdownRef}>
+                          <div
+                            onClick={() => setIsPostTypeDropdownOpen(!isPostTypeDropdownOpen)}
+                            className={`w-full min-h-[46px] border-2 rounded-xl p-2 bg-white flex flex-wrap gap-2 items-center cursor-pointer transition-all ${
+                              isPostTypeDropdownOpen ? "border-blue-500 shadow-sm" : "border-blue-400/80 hover:border-blue-500"
+                            }`}
+                          >
+                            {allowedPostTypes.map(type => (
+                              <span key={type} className="bg-slate-100 text-slate-800 text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1.5 border border-slate-200">
+                                {type}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAllowedPostTypes(prev => prev.filter(t => t !== type));
+                                  }}
+                                  className="hover:bg-slate-200 rounded-full p-0.5"
+                                >
+                                  <X className="w-3 h-3 text-slate-500" />
+                                </button>
+                              </span>
+                            ))}
+                            <span className="text-slate-400 text-xs px-1 select-none">
+                              {allowedPostTypes.length === 0 ? "Select post types" : ""}
+                            </span>
+                          </div>
+
+                          {/* Floating Dropdown List (Matching Screenshot 2) */}
+                          <AnimatePresence>
+                            {isPostTypeDropdownOpen && (
+                              <motion.div
+                                initial={{ opacity: 0, y: 4 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 4 }}
+                                className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-2 space-y-0.5 overflow-hidden"
+                              >
+                                {availablePostTypesList.map(type => {
+                                  const isSelected = allowedPostTypes.includes(type);
+                                  return (
+                                    <div
+                                      key={type}
+                                      onClick={() => {
+                                        if (isSelected) {
+                                          setAllowedPostTypes(prev => prev.filter(t => t !== type));
+                                        } else {
+                                          setAllowedPostTypes(prev => [...prev, type]);
+                                        }
+                                      }}
+                                      className="flex items-center gap-3 px-4 py-2 hover:bg-slate-50 cursor-pointer transition-colors"
+                                    >
+                                      <div className={`w-4 h-4 rounded flex items-center justify-center transition-all ${
+                                        isSelected ? "bg-emerald-500 text-white" : "border-2 border-slate-300"
+                                      }`}>
+                                        {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                                      </div>
+                                      <span className="text-xs font-semibold text-slate-700">{type}</span>
+                                    </div>
+                                  );
+                                })}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      </div>
+
+                      {/* 3. Configure cron jobs */}
+                      <div className="flex items-start justify-between pb-8">
+                        <div className="max-w-xs space-y-2">
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-base font-bold text-slate-800">Configure cron jobs</h3>
+                            <span className="bg-emerald-100 text-emerald-700 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full tracking-wider uppercase">
+                              RECOMMENDED
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-400 leading-relaxed">
+                            We recommend you to configure cronjob on your server for more accurate results.
+                          </p>
+                        </div>
+
+                        <div className="w-full max-w-sm space-y-4">
+                          <div className="flex justify-start">
+                            {/* Toggle switch */}
+                            <button
+                              type="button"
+                              onClick={() => setConfigureCron(!configureCron)}
+                              className={`w-12 h-6 rounded-full transition-colors p-1 relative flex items-center ${
+                                configureCron ? "bg-emerald-500" : "bg-slate-300"
+                              }`}
+                            >
+                              <div className={`w-4 h-4 bg-white rounded-full transition-transform shadow-md ${
+                                configureCron ? "translate-x-6" : "translate-x-0"
+                              }`}></div>
+                            </button>
+                          </div>
+
+                          {configureCron && (
+                            <div className="space-y-3">
+                              <div>
+                                <div className="flex items-center justify-between text-xs font-semibold text-slate-700 mb-1.5">
+                                  <span>Cronjob command:</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(cronCommand);
+                                      setCopiedCron(true);
+                                      setTimeout(() => setCopiedCron(false), 2000);
+                                    }}
+                                    className="text-blue-600 hover:underline flex items-center gap-1 font-bold text-xs"
+                                  >
+                                    <span>📋</span> {copiedCron ? "Copied!" : "Copy command"}
+                                  </button>
+                                </div>
+                                <div className="border border-slate-200 bg-slate-50 rounded-xl p-3 text-xs font-mono text-slate-700 break-all select-all">
+                                  {cronCommand}
+                                </div>
+                              </div>
+
+                              <div className="border border-slate-200 rounded-xl p-3 flex items-center justify-between text-xs bg-white">
+                                <span className="font-semibold text-slate-700">Last run:</span>
+                                <span className="text-slate-600 font-mono font-bold flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                  {lastCronFormatted}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Footer Actions (Custom Documentation Link) */}
+                      <div className="pt-6 border-t border-slate-100 flex items-center justify-between">
+                        <a
+                          href="https://smm.clicktaketech.com/docs"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm font-semibold text-[#635BFF] hover:underline"
+                        >
+                          See documentation
+                        </a>
+                        <div className="flex items-center gap-4">
+                          {generalSaveSuccess && (
+                            <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                              <CheckCircle2 className="w-4 h-4" /> General settings saved!
+                            </span>
+                          )}
+                          <button
+                            type="submit"
+                            disabled={isSavingGeneral}
+                            className="px-8 py-3 bg-[#635BFF] hover:bg-[#5249e6] text-white rounded-xl font-bold text-sm transition-all shadow-md shadow-[#635BFF]/20 disabled:opacity-50"
+                          >
+                            {isSavingGeneral ? "Saving..." : "Save changes"}
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+                  )}
+
+                  {activeSettingsMenu === "Facebook" && (
+                    <div className="space-y-6">
+                      {/* Sub-tabs header */}
+                      <div className="flex border-b border-slate-200 mb-8 gap-8">
+                        {(["General", "Post Customization", "Story Customization"] as const).map(tab => (
+                          <button
+                            key={tab}
+                            onClick={() => setSettingsSubTab(tab)}
+                            className={`pb-3 text-sm font-semibold border-b-2 transition-all ${
+                              settingsSubTab === tab
+                                ? "border-blue-600 text-blue-600"
+                                : "border-transparent text-slate-500 hover:text-slate-700"
+                            }`}
+                          >
+                            {tab}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Sub-tab 1: General (Matching Image 1: media_1788261316255.png) */}
+                      {settingsSubTab === "General" && (
+                        <form
+                          onSubmit={async (e) => {
+                            e.preventDefault();
+                            setSettingsSaving(true);
+                            setSettingsSavedSuccess(false);
+                            try {
+                              const { auth } = await import("@/lib/firebase");
+                              const { saveFacebookSettings, getFacebookSettings } = await import("@/lib/firestore");
+                              if (auth.currentUser) {
+                                const current = await getFacebookSettings(auth.currentUser.uid);
+                                await saveFacebookSettings(auth.currentUser.uid, {
+                                  ...current,
+                                  general: {
+                                    ...current.general,
+                                    importComments: fbImportComments,
+                                    fetchCommentsTimeframe: fbFetchTimeframe,
+                                  },
+                                });
+                              }
+                              setSettingsSavedSuccess(true);
+                              setTimeout(() => setSettingsSavedSuccess(false), 3000);
+                            } catch (err) {
+                              console.error("Save Facebook General Settings error:", err);
+                            } finally {
+                              setSettingsSaving(false);
+                            }
+                          }}
+                          className="space-y-8 max-w-2xl"
+                        >
+                          <div className="flex items-start justify-between pb-8 border-b border-slate-100">
+                            <div className="max-w-xs space-y-1">
+                              <h3 className="text-base font-bold text-slate-800">Import Facebook Comments</h3>
+                              <p className="text-xs text-slate-400 leading-relaxed">
+                                Activate the feature to fetch Facebook comments as post comments.
+                                This feature is supported by the Official App method, and comments are fetched every 12 hours.
+                              </p>
+                            </div>
+
+                            <div className="w-64 space-y-4">
+                              {/* Toggle switch */}
+                              <button
+                                type="button"
+                                onClick={() => setFbImportComments(!fbImportComments)}
+                                className={`w-12 h-6 rounded-full transition-colors p-1 relative flex items-center ${
+                                  fbImportComments ? "bg-emerald-500" : "bg-slate-300"
+                                }`}
+                              >
+                                <div className={`w-4 h-4 bg-white rounded-full transition-transform shadow-md ${
+                                  fbImportComments ? "translate-x-6" : "translate-x-0"
+                                }`}></div>
+                              </button>
+
+                              {fbImportComments && (
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                                    Fetch the post comments published in
+                                  </label>
+                                  <select
+                                    value={fbFetchTimeframe}
+                                    onChange={(e) => setFbFetchTimeframe(e.target.value as any)}
+                                    className="w-full border border-blue-400 rounded-xl px-4 py-2.5 text-xs text-slate-700 outline-none focus:border-blue-600 bg-white"
+                                  >
+                                    <option value="Last week">Last week</option>
+                                    <option value="Last 2 weeks">Last 2 weeks</option>
+                                    <option value="Last 3 weeks">Last 3 weeks</option>
+                                    <option value="Last month">Last month</option>
+                                  </select>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="pt-4 flex items-center justify-between border-t border-slate-100">
+                            <a
+                              href="https://smm.clicktaketech.com/docs"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-sm font-semibold text-[#635BFF] hover:underline"
+                            >
+                              See documentation
+                            </a>
+                            <div className="flex items-center gap-4">
+                              {settingsSavedSuccess && (
+                                <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                                  <CheckCircle2 className="w-4 h-4" /> Facebook settings saved!
+                                </span>
+                              )}
+                              <button
+                                type="submit"
+                                disabled={settingsSaving}
+                                className="px-8 py-3 bg-[#635BFF] hover:bg-[#5249e6] text-white rounded-xl font-bold text-sm transition-all shadow-md shadow-[#635BFF]/20 disabled:opacity-50"
+                              >
+                                {settingsSaving ? "Saving..." : "Save changes"}
+                              </button>
+                            </div>
+                          </div>
+                        </form>
+                      )}
+
+                      {/* Sub-tab 2: Post Customization (Matching Images 2 & 3: media_1788261316262.png & media_1788261316266.png) */}
+                      {settingsSubTab === "Post Customization" && (
+                        <form
+                          onSubmit={async (e) => {
+                            e.preventDefault();
+                            setSettingsSaving(true);
+                            setSettingsSavedSuccess(false);
+                            try {
+                              const { auth } = await import("@/lib/firebase");
+                              const { saveFacebookSettings, getFacebookSettings } = await import("@/lib/firestore");
+                              if (auth.currentUser) {
+                                const current = await getFacebookSettings(auth.currentUser.uid);
+                                await saveFacebookSettings(auth.currentUser.uid, {
+                                  ...current,
+                                  postCustomization: {
+                                    ...current.postCustomization,
+                                    customMessage: fbCustomMessage,
+                                    uploadPostImages: fbUploadImages,
+                                    attachLink: fbAttachLink,
+                                    enableFirstComment: fbEnableFirstComment,
+                                    firstCommentText: fbFirstCommentText,
+                                    firstComment: fbFirstCommentText,
+                                  },
+                                });
+                              }
+                              setSettingsSavedSuccess(true);
+                              setTimeout(() => setSettingsSavedSuccess(false), 3000);
+                            } catch (err) {
+                              console.error("Save Facebook Post Customization error:", err);
+                            } finally {
+                              setSettingsSaving(false);
+                            }
+                          }}
+                          className="space-y-8 max-w-3xl"
+                        >
+                          {/* 1. Post content */}
+                          <div className="flex items-start justify-between pb-8 border-b border-slate-100">
+                            <div className="max-w-xs space-y-1">
+                              <h3 className="text-base font-bold text-slate-800">Post content</h3>
+                              <p className="text-xs text-slate-400 leading-relaxed">
+                                Customize the shared post content by using available keywords and AI.
+                                Click on the desired keyword to add it to the custom message section.
+                              </p>
+                            </div>
+
+                            <div className="w-full max-w-sm">
+                              <div className="border border-slate-200 rounded-xl overflow-hidden bg-white focus-within:border-blue-500 transition-all">
+                                <div className="p-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2">
+                                  <span className="bg-slate-200 text-slate-700 text-xs font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1">
+                                    Post title ⚙
+                                  </span>
+                                </div>
+                                <textarea
+                                  rows={4}
+                                  value={fbCustomMessage}
+                                  onChange={(e) => setFbCustomMessage(e.target.value)}
+                                  className="w-full p-3 text-xs font-mono text-slate-800 outline-none resize-none"
+                                />
+                                <div className="px-3 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3 text-xs">
+                                  <button
+                                    type="button"
+                                    onClick={() => setFbCustomMessage(prev => prev + " \n\n✨ AI Generated Content: Enhance your social reach with automated scheduling!")}
+                                    className="flex items-center gap-1.5 font-semibold text-slate-700 hover:text-blue-600 transition-colors"
+                                  >
+                                    <Sparkles className="w-3.5 h-3.5 text-indigo-500" /> Use AI
+                                  </button>
+                                  <div className="relative">
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsKeywordMenuOpen(!isKeywordMenuOpen)}
+                                      className="flex items-center gap-1.5 font-semibold text-slate-700 hover:text-blue-600 transition-colors"
+                                    >
+                                      <ListIcon className="w-3.5 h-3.5 text-slate-500" /> Keywords
+                                    </button>
+                                    {isKeywordMenuOpen && (
+                                      <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 text-xs space-y-1 w-36">
+                                        {["{title}", "{url}", "{excerpt}", "{author}", "{date}"].map(kw => (
+                                          <div
+                                            key={kw}
+                                            onClick={() => {
+                                              setFbCustomMessage(prev => prev + ` ${kw}`);
+                                              setIsKeywordMenuOpen(false);
+                                            }}
+                                            className="px-2 py-1 hover:bg-slate-50 rounded cursor-pointer font-mono font-bold text-slate-700"
+                                          >
+                                            {kw}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 2. Attach post link */}
+                          <div className="flex items-center justify-between pb-8 border-b border-slate-100">
+                            <h3 className="text-base font-bold text-slate-800">Attach post link</h3>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextVal = !fbAttachLink;
+                                setFbAttachLink(nextVal);
+                                if (nextVal) setFbUploadImages(false);
+                              }}
+                              className={`w-12 h-6 rounded-full transition-colors p-1 relative flex items-center ${
+                                fbAttachLink ? "bg-emerald-500" : "bg-slate-300"
+                              }`}
+                            >
+                              <div className={`w-4 h-4 bg-white rounded-full transition-transform shadow-md ${
+                                fbAttachLink ? "translate-x-6" : "translate-x-0"
+                              }`}></div>
+                            </button>
+                          </div>
+
+                          {/* 3. Upload post image(s) (Matching Image 2: media_1788261316262.png) */}
+                          <div className="flex items-center justify-between pb-8 border-b border-slate-100 relative">
+                            <h3 className="text-base font-bold text-slate-800">Upload post image(s)</h3>
+                            <div className="relative group">
+                              <button
+                                type="button"
+                                disabled={fbAttachLink}
+                                onClick={() => setFbUploadImages(!fbUploadImages)}
+                                className={`w-12 h-6 rounded-full transition-colors p-1 relative flex items-center ${
+                                  fbUploadImages && !fbAttachLink ? "bg-emerald-500" : "bg-slate-200 cursor-not-allowed opacity-60"
+                                }`}
+                              >
+                                <div className={`w-4 h-4 bg-white rounded-full transition-transform shadow-md ${
+                                  fbUploadImages && !fbAttachLink ? "translate-x-6" : "translate-x-0"
+                                }`}></div>
+                              </button>
+                              {fbAttachLink && (
+                                <div className="absolute right-0 bottom-full mb-2 bg-slate-900 text-white text-[11px] font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                                  Media upload is not possible when attach post link is enabled
+                                  <div className="absolute top-full right-4 -mt-1 border-4 border-transparent border-t-slate-900"></div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* 4. Post a first comment (Matching Image 3: media_1788261316266.png) */}
+                          <div className="flex items-start justify-between pb-8">
+                            <div className="max-w-xs space-y-1">
+                              <h3 className="text-base font-bold text-slate-800">Post a first comment</h3>
+                              <p className="text-xs text-slate-400 leading-relaxed">
+                                Enable the option to share a customized message as a first comment.
+                                The feature is supported by the app method only.
+                              </p>
+                            </div>
+
+                            <div className="w-full max-w-sm space-y-4">
+                              <button
+                                type="button"
+                                onClick={() => setFbEnableFirstComment(!fbEnableFirstComment)}
+                                className={`w-12 h-6 rounded-full transition-colors p-1 relative flex items-center ${
+                                  fbEnableFirstComment ? "bg-emerald-500" : "bg-slate-300"
+                                }`}
+                              >
+                                <div className={`w-4 h-4 bg-white rounded-full transition-transform shadow-md ${
+                                  fbEnableFirstComment ? "translate-x-6" : "translate-x-0"
+                                }`}></div>
+                              </button>
+
+                              {fbEnableFirstComment && (
+                                <div className="border border-slate-200 rounded-xl overflow-hidden bg-white focus-within:border-blue-500 transition-all">
+                                  <input
+                                    type="text"
+                                    value={fbFirstCommentText}
+                                    onChange={(e) => setFbFirstCommentText(e.target.value)}
+                                    placeholder="e.g. @followers"
+                                    className="w-full p-3 text-xs font-mono text-slate-800 outline-none"
+                                  />
+                                  <div className="px-3 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3 text-xs">
+                                    <button
+                                      type="button"
+                                      onClick={() => setFbFirstCommentText("@followers Check out our full guide!")}
+                                      className="flex items-center gap-1.5 font-semibold text-slate-700 hover:text-blue-600 transition-colors"
+                                    >
+                                      <Sparkles className="w-3.5 h-3.5 text-indigo-500" /> Use AI
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setFbFirstCommentText(prev => prev + " {url}")}
+                                      className="flex items-center gap-1.5 font-semibold text-slate-700 hover:text-blue-600 transition-colors"
+                                    >
+                                      <ListIcon className="w-3.5 h-3.5 text-slate-500" /> Keywords
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Footer Actions */}
+                          <div className="pt-4 flex items-center justify-between border-t border-slate-100">
+                            <a
+                              href="https://smm.clicktaketech.com/docs"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-sm font-semibold text-[#635BFF] hover:underline"
+                            >
+                              See documentation
+                            </a>
+                            <div className="flex items-center gap-4">
+                              {settingsSavedSuccess && (
+                                <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                                  <CheckCircle2 className="w-4 h-4" /> Post customization saved!
+                                </span>
+                              )}
+                              <button
+                                type="submit"
+                                disabled={settingsSaving}
+                                className="px-8 py-3 bg-[#635BFF] hover:bg-[#5249e6] text-white rounded-xl font-bold text-sm transition-all shadow-md shadow-[#635BFF]/20 disabled:opacity-50"
+                              >
+                                {settingsSaving ? "Saving..." : "Save changes"}
+                              </button>
+                            </div>
+                          </div>
+                        </form>
+                      )}
+
+                      {/* Sub-tab 3: Story Customization (Matching Images 1, 2, 3, 4: media_1788261394283.png - media_1788261452164.png) */}
+                      {settingsSubTab === "Story Customization" && (
+                        <form
+                          onSubmit={async (e) => {
+                            e.preventDefault();
+                            setSettingsSaving(true);
+                            setSettingsSavedSuccess(false);
+                            try {
+                              const { auth } = await import("@/lib/firebase");
+                              const { saveFacebookSettings, getFacebookSettings } = await import("@/lib/firestore");
+                              if (auth.currentUser) {
+                                const current = await getFacebookSettings(auth.currentUser.uid);
+                                await saveFacebookSettings(auth.currentUser.uid, {
+                                  ...current,
+                                  storyCustomization: {
+                                    storyText: fbStoryText,
+                                    capitalizeStoryText: fbStoryCapitalize,
+                                    urlEncodeStoryText: fbStoryUrlEncode,
+                                    attachStoryLink: fbStoryAttachLink,
+                                    backgroundColor: storyBgColor,
+                                    titleBackgroundColor: storyTitleBgColor,
+                                    titleBackgroundOpacity: storyTitleOpacity,
+                                    titleColor: storyTitleColor,
+                                    titleTopOffset: storyTopOffset,
+                                    titleLeftOffset: storyLeftOffset,
+                                    titleWidth: storyWidth,
+                                    titleFontSize: storyFontSize,
+                                    titleFontFamily: storyFontFamily,
+                                    titleRtlMode: storyRtlMode,
+                                  },
+                                });
+                              }
+                              setSettingsSavedSuccess(true);
+                              setTimeout(() => setSettingsSavedSuccess(false), 3000);
+                            } catch (err) {
+                              console.error("Save Facebook Story Settings error:", err);
+                            } finally {
+                              setSettingsSaving(false);
+                            }
+                          }}
+                          className="space-y-8 max-w-4xl"
+                        >
+                          {/* 1. Story text (Matching Image 1: media_1788261394283.png) */}
+                          <div className="flex items-start justify-between pb-8 border-b border-slate-100">
+                            <div className="max-w-xs space-y-1">
+                              <h3 className="text-base font-bold text-slate-800">Story text</h3>
+                              <p className="text-xs text-slate-400 leading-relaxed">
+                                Customize the shared story content by using available keywords and AI. Click on the desired keyword to add it to the custom message section.
+                              </p>
+                            </div>
+
+                            <div className="w-full max-w-md relative">
+                              <div className="border border-slate-200 rounded-xl overflow-hidden bg-white focus-within:border-blue-500 transition-all">
+                                <div className="p-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2 relative">
+                                  {/* Tag badge with red dot indicator */}
+                                  <button
+                                    type="button"
+                                    onClick={() => setFbStoryTagSettingsOpen(!fbStoryTagSettingsOpen)}
+                                    className="bg-slate-200 text-slate-700 text-xs font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1 hover:bg-slate-300 transition-colors relative"
+                                  >
+                                    Post title ⚙
+                                    <span className="w-2 h-2 rounded-full bg-red-500 absolute -top-1 -right-1"></span>
+                                  </button>
+
+                                  {/* Tag Popover Settings (Matching Image 1) */}
+                                  <AnimatePresence>
+                                    {fbStoryTagSettingsOpen && (
+                                      <motion.div
+                                        initial={{ opacity: 0, y: 4 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: 4 }}
+                                        className="absolute left-0 top-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 p-4 w-72 space-y-3"
+                                      >
+                                        {/* Code snippet tooltip */}
+                                        <div className="bg-slate-900 text-white text-[10px] font-mono px-3 py-1.5 rounded-lg text-center font-bold">
+                                          {`{post_title ${fbStoryCapitalize ? 'ucfirst="true"' : ''} ${fbStoryUrlEncode ? 'encoded="true"' : ''}}`}
+                                        </div>
+
+                                        {/* Capitalize option */}
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs font-bold text-slate-700">Capitalize</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => setFbStoryCapitalize(!fbStoryCapitalize)}
+                                            className={`w-10 h-5 rounded-full transition-colors p-0.5 relative flex items-center ${
+                                              fbStoryCapitalize ? "bg-emerald-500" : "bg-slate-300"
+                                            }`}
+                                          >
+                                            <div className={`w-3.5 h-3.5 bg-white rounded-full transition-transform shadow-md ${
+                                              fbStoryCapitalize ? "translate-x-5" : "translate-x-0"
+                                            }`}></div>
+                                          </button>
+                                        </div>
+
+                                        {/* URL Encode option */}
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs font-bold text-slate-700">URL Encode</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => setFbStoryUrlEncode(!fbStoryUrlEncode)}
+                                            className={`w-10 h-5 rounded-full transition-colors p-0.5 relative flex items-center ${
+                                              fbStoryUrlEncode ? "bg-emerald-500" : "bg-slate-300"
+                                            }`}
+                                          >
+                                            <div className={`w-3.5 h-3.5 bg-white rounded-full transition-transform shadow-md ${
+                                              fbStoryUrlEncode ? "translate-x-5" : "translate-x-0"
+                                            }`}></div>
+                                          </button>
+                                        </div>
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
+                                </div>
+
+                                <textarea
+                                  rows={3}
+                                  value={fbStoryText}
+                                  onChange={(e) => setFbStoryText(e.target.value)}
+                                  className="w-full p-3 text-xs font-mono text-slate-800 outline-none resize-none"
+                                />
+
+                                <div className="px-3 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3 text-xs">
+                                  <button
+                                    type="button"
+                                    onClick={() => setFbStoryText("{title} — Watch full story!")}
+                                    className="flex items-center gap-1.5 font-semibold text-slate-700 hover:text-blue-600 transition-colors"
+                                  >
+                                    <Sparkles className="w-3.5 h-3.5 text-indigo-500" /> Use AI
+                                  </button>
+                                  <div className="relative">
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsStoryKeywordMenuOpen(!isStoryKeywordMenuOpen)}
+                                      className="flex items-center gap-1.5 font-semibold text-slate-700 hover:text-blue-600 transition-colors"
+                                    >
+                                      <ListIcon className="w-3.5 h-3.5 text-slate-500" /> Keywords
+                                    </button>
+                                    {isStoryKeywordMenuOpen && (
+                                      <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 text-xs space-y-1 w-36">
+                                        {["{title}", "{url}", "{excerpt}"].map(kw => (
+                                          <div
+                                            key={kw}
+                                            onClick={() => {
+                                              setFbStoryText(prev => prev + ` ${kw}`);
+                                              setIsStoryKeywordMenuOpen(false);
+                                            }}
+                                            className="px-2 py-1 hover:bg-slate-50 rounded cursor-pointer font-mono font-bold text-slate-700"
+                                          >
+                                            {kw}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 2. Attach story link (Matching Image 1) */}
+                          <div className="flex items-center justify-between pb-8 border-b border-slate-100">
+                            <h3 className="text-base font-bold text-slate-800">Attach story link</h3>
+                            <button
+                              type="button"
+                              onClick={() => setFbStoryAttachLink(!fbStoryAttachLink)}
+                              className={`w-12 h-6 rounded-full transition-colors p-1 relative flex items-center ${
+                                fbStoryAttachLink ? "bg-emerald-500" : "bg-slate-300"
+                              }`}
+                            >
+                              <div className={`w-4 h-4 bg-white rounded-full transition-transform shadow-md ${
+                                fbStoryAttachLink ? "translate-x-6" : "translate-x-0"
+                              }`}></div>
+                            </button>
+                          </div>
+
+                          {/* 3. Appearances & Live Preview (Matching Images 2, 3, 4: media_1788261415355.png - media_1788261452164.png) */}
+                          <div className="space-y-6">
+                            <div>
+                              <h3 className="text-lg font-bold text-slate-800">Appearances</h3>
+                              <p className="text-xs text-slate-400 mt-0.5">Customize story appearances</p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                              {/* Left Controls */}
+                              <div className="space-y-5">
+                                {/* Story background color */}
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Story background color</label>
+                                  <div className="flex items-center border border-slate-200 rounded-xl px-4 py-2.5 bg-white justify-between">
+                                    <div className="flex items-center gap-3">
+                                      <input
+                                        type="color"
+                                        value={storyBgColor}
+                                        onChange={(e) => setStoryBgColor(e.target.value)}
+                                        className="w-6 h-6 rounded-full border-none cursor-pointer"
+                                      />
+                                      <span className="text-xs font-mono text-slate-700 font-bold">{storyBgColor}</span>
+                                    </div>
+                                    <Pencil className="w-4 h-4 text-slate-400" />
+                                  </div>
+                                </div>
+
+                                {/* Title background color */}
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Title background color</label>
+                                  <div className="flex items-center border border-slate-200 rounded-xl px-4 py-2.5 bg-white justify-between">
+                                    <div className="flex items-center gap-3">
+                                      <input
+                                        type="color"
+                                        value={storyTitleBgColor}
+                                        onChange={(e) => setStoryTitleBgColor(e.target.value)}
+                                        className="w-6 h-6 rounded-full border-none cursor-pointer"
+                                      />
+                                      <span className="text-xs font-mono text-slate-700 font-bold">{storyTitleBgColor}</span>
+                                    </div>
+                                    <Pencil className="w-4 h-4 text-slate-400" />
+                                  </div>
+                                </div>
+
+                                {/* Title background opacity (Matching Image: media_1788261779261.png) */}
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <label className="block text-xs font-semibold text-slate-700">Title background opacity</label>
+                                  </div>
+                                  <div className="relative pt-4">
+                                    {/* Tooltip value badge floating over slider handle (Matching Screenshot) */}
+                                    <div
+                                      className="absolute top-0 transform -translate-x-1/2 bg-slate-900 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm transition-all pointer-events-none"
+                                      style={{ left: `${storyTitleOpacity}%` }}
+                                    >
+                                      {storyTitleOpacity}
+                                    </div>
+                                    <input
+                                      type="range"
+                                      min="0"
+                                      max="100"
+                                      value={storyTitleOpacity}
+                                      onChange={(e) => setStoryTitleOpacity(Number(e.target.value))}
+                                      className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Title color (Matching Image: media_1788261779261.png) */}
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Title color</label>
+                                  <div className="flex items-center border border-slate-200 rounded-xl px-4 py-2.5 bg-white justify-between">
+                                    <div className="flex items-center gap-3">
+                                      <input
+                                        type="color"
+                                        value={storyTitleColor}
+                                        onChange={(e) => setStoryTitleColor(e.target.value)}
+                                        className="w-6 h-6 rounded-full border-none cursor-pointer"
+                                      />
+                                      <span className="text-xs font-mono text-slate-700 font-bold">{storyTitleColor}</span>
+                                    </div>
+                                    <Pencil className="w-4 h-4 text-slate-400" />
+                                  </div>
+                                </div>
+
+                                {/* Title top offset (Matching Image: media_1788261779261.png) */}
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Title top offset</label>
+                                  <input
+                                    type="number"
+                                    value={storyTopOffset}
+                                    onChange={(e) => setStoryTopOffset(Number(e.target.value))}
+                                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-700 outline-none focus:border-blue-500"
+                                  />
+                                </div>
+
+                                {/* Title left offset (Matching Image: media_1788261779261.png) */}
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Title left offset</label>
+                                  <input
+                                    type="number"
+                                    value={storyLeftOffset}
+                                    onChange={(e) => setStoryLeftOffset(Number(e.target.value))}
+                                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-700 outline-none focus:border-blue-500"
+                                  />
+                                </div>
+
+                                {/* Title width */}
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Title width</label>
+                                  <input
+                                    type="number"
+                                    value={storyWidth}
+                                    onChange={(e) => setStoryWidth(Number(e.target.value))}
+                                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-700 outline-none focus:border-blue-500"
+                                  />
+                                </div>
+
+                                {/* Title font size */}
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Title font size</label>
+                                  <input
+                                    type="number"
+                                    value={storyFontSize}
+                                    onChange={(e) => setStoryFontSize(Number(e.target.value))}
+                                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-700 outline-none focus:border-blue-500"
+                                  />
+                                </div>
+
+                                {/* Title font family (Matching Image 4) */}
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Title font family</label>
+                                  <select
+                                    value={storyFontFamily}
+                                    onChange={(e) => setStoryFontFamily(e.target.value)}
+                                    className="w-full border border-blue-400 rounded-xl px-4 py-2.5 text-xs text-slate-700 outline-none focus:border-blue-600 bg-white"
+                                  >
+                                    {fontFamilyList.map(font => (
+                                      <option key={font} value={font}>{font}</option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                {/* Title RTL mode (Matching Image 4) */}
+                                <div className="pt-2">
+                                  <label
+                                    onClick={() => setStoryRtlMode(!storyRtlMode)}
+                                    className="flex items-center gap-3 cursor-pointer select-none"
+                                  >
+                                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                                      storyRtlMode
+                                        ? "bg-emerald-500 border-emerald-500 text-white"
+                                        : "border-slate-300 bg-white"
+                                    }`}>
+                                      {storyRtlMode && <CheckCircle2 className="w-4 h-4 text-white" />}
+                                    </div>
+                                    <span className="text-xs font-bold text-slate-700">Title RTL mode</span>
+                                  </label>
+                                </div>
+                              </div>
+
+                              {/* Right Live Story Preview Canvas (Matching Image 2 & Screenshot) */}
+                              <div className="flex flex-col items-center justify-center sticky top-6">
+                                <span className="text-xs font-semibold text-slate-400 mb-3 uppercase tracking-wider">Live Story Preview</span>
+                                <div
+                                  className="w-full max-w-[280px] h-[440px] rounded-2xl shadow-2xl relative overflow-hidden flex flex-col justify-start items-start p-4 border border-slate-200"
+                                  style={{ backgroundColor: storyBgColor }}
+                                >
+                                  {/* Floating Story Title Card with Opacity & Positioning */}
+                                  <div
+                                    className="px-4 py-3 rounded-lg text-center font-bold shadow-lg transition-all"
+                                    style={{
+                                      backgroundColor: `${storyTitleBgColor}${Math.round((storyTitleOpacity / 100) * 255).toString(16).padStart(2, '0')}`,
+                                      color: storyTitleColor,
+                                      fontSize: `${Math.min(storyFontSize, 24)}px`,
+                                      fontFamily: storyFontFamily,
+                                      direction: storyRtlMode ? "rtl" : "ltr",
+                                      width: `${Math.min(storyWidth, 240)}px`,
+                                      marginTop: `${Math.min(storyTopOffset / 3, 160)}px`,
+                                      marginLeft: `${Math.min(storyLeftOffset / 3, 40)}px`,
+                                    }}
+                                  >
+                                    {fbStoryText || "{title}"}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Footer Actions */}
+                          <div className="pt-6 flex items-center justify-between border-t border-slate-100">
+                            <a
+                              href="https://smm.clicktaketech.com/docs"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-sm font-semibold text-[#635BFF] hover:underline"
+                            >
+                              See documentation
+                            </a>
+                            <div className="flex items-center gap-4">
+                              {settingsSavedSuccess && (
+                                <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                                  <CheckCircle2 className="w-4 h-4" /> Story settings saved!
+                                </span>
+                              )}
+                              <button
+                                type="submit"
+                                disabled={settingsSaving}
+                                className="px-8 py-3 bg-[#635BFF] hover:bg-[#5249e6] text-white rounded-xl font-bold text-sm transition-all shadow-md shadow-[#635BFF]/20 disabled:opacity-50"
+                              >
+                                {settingsSaving ? "Saving..." : "Save changes"}
+                              </button>
+                            </div>
+                          </div>
+                        </form>
+                      )}
+                    </div>
+                  )}
+
+                  {activeSettingsMenu === "Apps" && (
+                    <div className="space-y-6">
+                      {/* Top Action Bar matching Image 3 (media_1788260324491.png) */}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Apps</h2>
+                          <p className="text-xs text-slate-400 mt-0.5">Manage your Developer Apps for social network integrations.</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {selectedAppIds.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const { deleteSocialApp } = await import("@/lib/firestore");
+                                  const deletePromises = selectedAppIds.map(async (id) => {
+                                    if (!id.startsWith("app-")) {
+                                      await deleteSocialApp(id);
+                                    }
+                                  });
+                                  await Promise.all(deletePromises);
+                                  setSocialApps(prev => prev.filter(a => !selectedAppIds.includes(a.id)));
+                                  setSelectedAppIds([]);
+                                } catch (err) {
+                                  console.error("Bulk delete error:", err);
+                                }
+                              }}
+                              className="flex items-center gap-2 px-4 py-2 border border-red-500 bg-white hover:bg-red-50 text-red-600 rounded-xl font-bold text-sm transition-all shadow-sm"
+                            >
+                              <Trash2 className="w-4 h-4 text-red-600" />
+                              <span>Delete {selectedAppIds.length}</span>
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              setIsAddAppModalOpen(true);
+                              setSelectedNetworkForApp(null);
+                            }}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-[#635BFF] hover:bg-[#5249e6] text-white font-bold rounded-xl text-sm transition-all shadow-md shadow-[#635BFF]/20"
+                          >
+                            <Plus className="w-4 h-4" /> Add app
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Apps Table matching Reference Screenshots */}
+                      <div className="border border-slate-100 rounded-2xl overflow-hidden bg-white shadow-sm">
+                        <table className="w-full text-left border-collapse">
+                          <tbody>
+                            {socialApps.map((app, idx) => {
+                              const platformUpper = (app.platform || "app").toUpperCase();
+                              let badgeStyle = "bg-slate-100 text-slate-700";
+                              if (platformUpper === "BLOGGER") badgeStyle = "bg-amber-100 text-amber-700";
+                              if (platformUpper === "FACEBOOK") badgeStyle = "bg-blue-100 text-blue-700";
+                              if (platformUpper === "LINKEDIN") badgeStyle = "bg-sky-100 text-sky-700";
+                              if (platformUpper === "REDDIT") badgeStyle = "bg-amber-100 text-orange-700";
+                              if (platformUpper === "TUMBLR") badgeStyle = "bg-slate-100 text-slate-700";
+                              if (platformUpper === "INSTAGRAM") badgeStyle = "bg-pink-100 text-pink-700";
+
+                              const isChecked = selectedAppIds.includes(app.id);
+
+                              return (
+                                <tr
+                                  key={app.id || idx}
+                                  className={`border-b border-slate-100 hover:bg-slate-50/80 transition-colors group last:border-b-0 ${
+                                    isChecked ? "bg-slate-50/40" : ""
+                                  }`}
+                                >
+                                  {/* Green Checkbox Column (Matching Image 3) */}
+                                  <td className="py-4 px-6 w-12 cursor-pointer" onClick={() => {
+                                    if (isChecked) setSelectedAppIds(prev => prev.filter(id => id !== app.id));
+                                    else setSelectedAppIds(prev => [...prev, app.id]);
+                                  }}>
+                                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                                      isChecked
+                                        ? "bg-emerald-500 border-emerald-500 text-white"
+                                        : "border-slate-300 bg-white hover:border-slate-400"
+                                    }`}>
+                                      {isChecked && <CheckCircle2 className="w-4 h-4 text-white" />}
+                                    </div>
+                                  </td>
+                                  <td className="py-4 px-4 w-40">
+                                    <span className={`text-[11px] font-extrabold px-3 py-1 rounded-full tracking-wider ${badgeStyle}`}>
+                                      {platformUpper}
+                                    </span>
+                                  </td>
+                                  <td className="py-4 px-6 font-semibold text-slate-800 text-sm">
+                                    {app.name}
+                                  </td>
+                                  <td className="py-4 px-6 w-16 text-right">
+                                    <button
+                                      onClick={async () => {
+                                        try {
+                                          const { deleteSocialApp } = await import("@/lib/firestore");
+                                          if (app.id && !app.id.startsWith("app-")) {
+                                            await deleteSocialApp(app.id);
+                                          }
+                                          setSocialApps(prev => prev.filter(a => a.id !== app.id));
+                                          setSelectedAppIds(prev => prev.filter(id => id !== app.id));
+                                        } catch (err) {
+                                          console.error("Delete app error:", err);
+                                        }
+                                      }}
+                                      className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                      title="Delete App"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            {socialApps.length === 0 && (
+                              <tr>
+                                <td colSpan={4} className="py-12 text-center text-slate-400 text-sm">
+                                  No apps configured yet. Click "+ Add app" to create your first developer app.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeSettingsMenu !== "General" && activeSettingsMenu !== "Facebook" && activeSettingsMenu !== "Apps" && (
+                    <div className="space-y-6 max-w-2xl">
+                      <div>
+                        <h3 className="text-xl font-bold text-slate-800">{activeSettingsMenu} Settings</h3>
+                        <p className="text-xs text-slate-400 mt-1">Configure automated posting parameters and content templates for {activeSettingsMenu}.</p>
+                      </div>
+
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          setSettingsSaving(true);
+                          setSettingsSavedSuccess(false);
+                          try {
+                            const { auth } = await import("@/lib/firebase");
+                            const { saveSocialNetworkSettings } = await import("@/lib/firestore");
+                            if (auth.currentUser) {
+                              await saveSocialNetworkSettings(auth.currentUser.uid, activeSettingsMenu, {
+                                customMessage: fbCustomMessage,
+                                attachLink: fbAttachLink,
+                                autoShare: true,
+                              });
+                            }
+                            setSettingsSavedSuccess(true);
+                            setTimeout(() => setSettingsSavedSuccess(false), 3000);
+                          } catch (err) {
+                            console.error(`Save ${activeSettingsMenu} settings error:`, err);
+                          } finally {
+                            setSettingsSaving(false);
+                          }
+                        }}
+                        className="space-y-6"
+                      >
+                        {/* Custom Message Template */}
+                        <div className="space-y-2">
+                          <label className="block text-xs font-bold text-slate-700">Custom Post Template</label>
+                          <div className="border border-slate-200 rounded-xl overflow-hidden bg-white focus-within:border-blue-500 transition-all">
+                            <textarea
+                              rows={4}
+                              value={fbCustomMessage}
+                              onChange={(e) => setFbCustomMessage(e.target.value)}
+                              className="w-full p-3 text-xs font-mono text-slate-800 outline-none resize-none"
+                            />
+                            <div className="px-3 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3 text-xs">
+                              <button
+                                type="button"
+                                onClick={() => setFbCustomMessage(prev => prev + " \n\n✨ AI Generated Content!")}
+                                className="flex items-center gap-1.5 font-semibold text-slate-700 hover:text-blue-600 transition-colors"
+                              >
+                                <Sparkles className="w-3.5 h-3.5 text-indigo-500" /> Use AI
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Attach Link Toggle */}
+                        <div className="flex items-center justify-between py-4 border-t border-slate-100">
+                          <span className="text-xs font-bold text-slate-700">Attach Post Link</span>
+                          <button
+                            type="button"
+                            onClick={() => setFbAttachLink(!fbAttachLink)}
+                            className={`w-12 h-6 rounded-full transition-colors p-1 relative flex items-center ${
+                              fbAttachLink ? "bg-emerald-500" : "bg-slate-300"
+                            }`}
+                          >
+                            <div className={`w-4 h-4 bg-white rounded-full transition-transform shadow-md ${
+                              fbAttachLink ? "translate-x-6" : "translate-x-0"
+                            }`}></div>
+                          </button>
+                        </div>
+
+                        {/* Footer Actions */}
+                        <div className="pt-4 flex items-center justify-between border-t border-slate-100">
+                          <a
+                            href="https://smm.clicktaketech.com/docs"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sm font-semibold text-[#635BFF] hover:underline"
+                          >
+                            See documentation
+                          </a>
+                          <div className="flex items-center gap-4">
+                            {settingsSavedSuccess && (
+                              <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                                <CheckCircle2 className="w-4 h-4" /> {activeSettingsMenu} settings saved!
+                              </span>
+                            )}
+                            <button
+                              type="submit"
+                              disabled={settingsSaving}
+                              className="px-8 py-3 bg-[#635BFF] hover:bg-[#5249e6] text-white rounded-xl font-bold text-sm transition-all shadow-md shadow-[#635BFF]/20 disabled:opacity-50"
+                            >
+                              {settingsSaving ? "Saving..." : "Save changes"}
+                            </button>
+                          </div>
+                        </div>
+                      </form>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Add App Modal — Matching Image 2 Exactly */}
+              <AnimatePresence>
+                {isAddAppModalOpen && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[580px] overflow-hidden flex flex-col border border-slate-100"
+                    >
+                      {/* Header */}
+                      <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                        <h3 className="font-bold text-slate-800 text-lg">Add Developer App</h3>
+                        <button
+                          onClick={() => {
+                            setIsAddAppModalOpen(false);
+                            setSelectedNetworkForApp(null);
+                          }}
+                          className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      {/* Modal Body: Left Networks List + Right Form (Image 2) */}
+                      <div className="flex flex-1 overflow-hidden">
+                        {/* Left Networks List matching Image 2 */}
+                        <div className="w-64 border-r border-slate-100 overflow-y-auto p-3 space-y-1 bg-slate-50/50">
+                          {[
+                            { id: "facebook", name: "Facebook", Icon: FaFacebook, color: "text-blue-600" },
+                            { id: "instagram", name: "Instagram", Icon: FaInstagram, color: "text-pink-600" },
+                            { id: "threads", name: "Threads", Icon: SiThreads, color: "text-slate-900" },
+                            { id: "tiktok", name: "Tiktok", Icon: FaTiktok, color: "text-slate-900" },
+                            { id: "linkedin", name: "Linkedin", Icon: FaLinkedin, color: "text-blue-600" },
+                            { id: "pinterest", name: "Pinterest", Icon: FaPinterest, color: "text-red-600" },
+                            { id: "reddit", name: "Reddit", Icon: FaReddit, color: "text-orange-600" },
+                            { id: "youtube", name: "YouTube Shorts", Icon: FaYoutube, color: "text-red-600" },
+                            { id: "google_business", name: "Google Business", Icon: FaGoogle, color: "text-blue-600" },
+                            { id: "blogger", name: "Blogger", Icon: FaBlogger, color: "text-amber-600" },
+                          ].map(net => (
+                            <div
+                              key={net.id}
+                              onClick={() => {
+                                setSelectedNetworkForApp(net);
+                                setAppNameInput(`${net.name} App`);
+                              }}
+                              className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all ${
+                                selectedNetworkForApp?.id === net.id
+                                  ? "bg-white text-slate-900 font-bold shadow-sm border border-slate-200"
+                                  : "text-slate-700 hover:bg-white hover:text-slate-900 font-medium"
+                              }`}
+                            >
+                              <net.Icon className={`w-5 h-5 ${net.color}`} />
+                              <span className="text-sm">{net.name}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Right Area Content matching Image 2 */}
+                        <div className="flex-1 p-8 bg-white overflow-y-auto">
+                          {!selectedNetworkForApp ? (
+                            <div className="flex items-center text-slate-500 text-sm font-semibold h-full pt-12">
+                              <ArrowLeft className="w-5 h-5 mr-3 text-slate-400" />
+                              Please choose a social network to add an App.
+                            </div>
+                          ) : (
+                            <form
+                              onSubmit={async (e) => {
+                                e.preventDefault();
+                                if (!appNameInput || !appIdInput) return;
+                                setIsSubmittingApp(true);
+                                setAppSaveSuccess(false);
+                                try {
+                                  const { auth } = await import("@/lib/firebase");
+                                  const { addSocialApp } = await import("@/lib/firestore");
+                                  const userId = auth.currentUser?.uid || "demo";
+                                  const newAppId = await addSocialApp({
+                                    userId,
+                                    name: appNameInput,
+                                    platform: selectedNetworkForApp.id,
+                                    appId: appIdInput,
+                                    appSecret: appSecretInput,
+                                  });
+                                  setSocialApps(prev => [
+                                    {
+                                      id: newAppId,
+                                      userId,
+                                      name: appNameInput,
+                                      platform: selectedNetworkForApp.id,
+                                      appId: appIdInput,
+                                    },
+                                    ...prev,
+                                  ]);
+                                  setAppSaveSuccess(true);
+                                  setTimeout(() => {
+                                    setIsAddAppModalOpen(false);
+                                    setAppSaveSuccess(false);
+                                  }, 1500);
+                                } catch (err) {
+                                  console.error("Save app error:", err);
+                                } finally {
+                                  setIsSubmittingApp(false);
+                                }
+                              }}
+                              className="space-y-6 max-w-md"
+                            >
+                              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                                <div className="flex items-center gap-3">
+                                  <selectedNetworkForApp.Icon className={`w-6 h-6 ${selectedNetworkForApp.color}`} />
+                                  <h4 className="font-bold text-slate-800 text-lg">{selectedNetworkForApp.name} App</h4>
+                                </div>
+                                <a
+                                  href="https://smm.clicktaketech.com/docs"
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs text-blue-600 font-semibold hover:underline"
+                                >
+                                  See documentation
+                                </a>
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1.5">App Name *</label>
+                                <input
+                                  type="text"
+                                  required
+                                  value={appNameInput}
+                                  onChange={(e) => setAppNameInput(e.target.value)}
+                                  placeholder="e.g. My App"
+                                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-blue-500"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1.5">App ID / Client ID *</label>
+                                <input
+                                  type="text"
+                                  required
+                                  value={appIdInput}
+                                  onChange={(e) => setAppIdInput(e.target.value)}
+                                  placeholder="Enter App ID"
+                                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-blue-500 font-mono text-xs"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1.5">App Secret / Client Secret</label>
+                                <input
+                                  type="password"
+                                  value={appSecretInput}
+                                  onChange={(e) => setAppSecretInput(e.target.value)}
+                                  placeholder="Enter App Secret"
+                                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-blue-500 font-mono text-xs"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1.5">OAuth Redirect URI</label>
+                                <div className="border border-slate-200 rounded-xl p-3 bg-slate-50 text-xs font-mono text-slate-600 flex items-center justify-between">
+                                  <span className="truncate">http://localhost:3000/api/oauth/callback</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => navigator.clipboard.writeText("http://localhost:3000/api/oauth/callback")}
+                                    className="text-blue-600 text-xs font-bold hover:underline shrink-0 ml-2"
+                                  >
+                                    Copy
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="pt-4 flex items-center justify-between border-t border-slate-100">
+                                <button
+                                  type="button"
+                                  onClick={() => setIsAddAppModalOpen(false)}
+                                  className="px-5 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                                <div className="flex items-center gap-3">
+                                  {appSaveSuccess && (
+                                    <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                                      <CheckCircle2 className="w-4 h-4" /> App Saved!
+                                    </span>
+                                  )}
+                                  <button
+                                    type="submit"
+                                    disabled={isSubmittingApp}
+                                    className="px-6 py-2.5 bg-[#635BFF] hover:bg-[#5249e6] text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-[#635BFF]/20 disabled:opacity-50"
+                                  >
+                                    {isSubmittingApp ? "Saving..." : "Save App"}
+                                  </button>
+                                </div>
+                              </div>
+                            </form>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
@@ -1190,116 +2944,362 @@ export default function SocialPosterPage() {
                 </div>
 
                 {/* Right Area Content */}
-                <div className="flex-1 p-8 bg-white flex flex-col">
+                <div className="flex-1 p-6 bg-white flex flex-col overflow-y-auto">
                   {!selectedNetworkToAdd ? (
-                    <div className="flex items-center text-slate-500 font-medium">
-                      <ArrowLeft className="w-5 h-5 mr-4" />
-                      Please choose a social network to add a channel.
+                    <div className="flex items-center justify-center h-full text-slate-500 font-medium">
+                      <ArrowLeft className="w-5 h-5 mr-4 text-slate-400" />
+                      Please choose a social network from the list.
                     </div>
-                  ) : addChannelMode === "easy" ? (
-                    <div className="flex flex-col h-full max-w-md mx-auto w-full">
-                      <div className="h-48 rounded-xl bg-gradient-to-br from-pink-200 via-purple-200 to-blue-200 flex items-center justify-center gap-6 shadow-inner mb-auto mt-8 relative overflow-hidden">
-                        <div className="w-16 h-16 bg-white rounded-2xl shadow-md flex items-center justify-center overflow-hidden">
-                          <img src="/fs-poster-logo.png" alt="FS Poster" className="w-full h-full object-cover rounded-2xl" />
-                        </div>
-                        <ArrowRightLeft className="w-6 h-6 text-slate-400" />
-                        <div className="w-16 h-16 bg-white rounded-2xl shadow-md flex items-center justify-center">
-                          <NetAvatar net={selectedNetworkToAdd} size="lg" />
-                        </div>
+                  ) : selectedNetworkToAdd.id === "fb" || selectedNetworkToAdd.id === "facebook" ? (
+                    <div className="flex flex-col h-full max-w-lg mx-auto w-full">
+                      {/* Method Selector Tabs */}
+                      <div className="flex border-b border-slate-200 mb-6">
+                        <button
+                          onClick={() => setFbMethodTab("app")}
+                          className={`flex-1 py-2.5 text-center text-sm font-semibold border-b-2 transition-all ${
+                            fbMethodTab === "app"
+                              ? "border-blue-600 text-blue-600"
+                              : "border-transparent text-slate-500 hover:text-slate-700"
+                          }`}
+                        >
+                          App Method (Official API)
+                        </button>
+                        <button
+                          onClick={() => setFbMethodTab("cookie")}
+                          className={`flex-1 py-2.5 text-center text-sm font-semibold border-b-2 transition-all ${
+                            fbMethodTab === "cookie"
+                              ? "border-blue-600 text-blue-600"
+                              : "border-transparent text-slate-500 hover:text-slate-700"
+                          }`}
+                        >
+                          Cookie Method (Account/Groups/Stories)
+                        </button>
                       </div>
 
-                      <div className="mt-auto pt-8">
-                        <a
-                          href={selectedNetworkToAdd.signInUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-full flex items-center justify-center py-3 px-4 border border-slate-300 rounded-lg text-slate-700 font-medium hover:bg-slate-50 transition-colors mb-6 shadow-sm"
-                        >
-                          <NetAvatar net={selectedNetworkToAdd} size="sm" />
-                          <span className="ml-3">Sign in with {selectedNetworkToAdd.name}</span>
-                        </a>
-                        
-                        <label className="flex items-center gap-3 text-sm text-slate-700 font-medium cursor-pointer mb-8">
-                          <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-[#635BFF] focus:ring-[#635BFF]" />
-                          Enable proxy
-                        </label>
-                        
-                        <div className="flex justify-center">
-                          <button onClick={() => setAddChannelMode("advanced")} className="flex items-center text-slate-500 font-medium hover:text-slate-800 transition-colors">
-                            More options <ArrowRight className="w-4 h-4 ml-2" />
-                          </button>
+                      {fbMethodTab === "app" ? (
+                        <div className="flex flex-col justify-between flex-1">
+                          <div className="space-y-4">
+                            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-900">
+                              <h4 className="font-bold mb-1">App Method Details</h4>
+                              <p className="text-xs text-blue-700 leading-relaxed">
+                                Connect your Facebook Pages safely using Facebook's official Graph API.
+                                100% reliable with zero risk of account restriction. Supports <b>Pages only</b>.
+                              </p>
+                            </div>
+
+                            <div className="p-4 border border-slate-200 rounded-xl bg-slate-50 text-xs space-y-2 text-slate-600">
+                              <div className="flex items-center justify-between font-semibold text-slate-800">
+                                <span>Supported Channels:</span>
+                                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold">Pages Only</span>
+                              </div>
+                              <p>• Automatically fetches all Pages managed by your Facebook account.</p>
+                              <p>• Uses long-lived Page Access Tokens that act as the Page itself.</p>
+                            </div>
+                          </div>
+
+                          <div className="pt-6">
+                            <a
+                              href="/api/oauth/login?network=facebook"
+                              className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-[#1877F2] hover:bg-[#166fe5] text-white font-semibold rounded-xl transition-all shadow-md"
+                            >
+                              <FaFacebook className="text-xl" />
+                              <span>Add Pages via Facebook App</span>
+                            </a>
+                          </div>
                         </div>
+                      ) : (
+                        <div className="flex flex-col flex-1 space-y-4">
+                          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900">
+                            <h4 className="font-bold mb-0.5">Cookie Method (FS Poster Standard)</h4>
+                            <p className="text-amber-800">
+                              Enables posting to Personal Timelines, Groups, Personal Stories, and Page Stories.
+                            </p>
+                          </div>
+
+                          {/* Browser Cookie Extraction Instructions */}
+                          <div className="border border-slate-200 rounded-xl p-3.5 bg-slate-50 text-xs text-slate-600 space-y-1">
+                            <p className="font-bold text-slate-800">How to get your Facebook cookies:</p>
+                            <ol className="list-decimal pl-4 space-y-1 text-[11px]">
+                              <li>Open <b>facebook.com</b> in Chrome/Edge and log in to your account.</li>
+                              <li>Press <b>F12</b> to open Developer Tools → click <b>Application</b> tab.</li>
+                              <li>In the left sidebar, expand <b>Cookies</b> → select <b>https://www.facebook.com</b>.</li>
+                              <li>Copy the value of <b>c_user</b> (Numeric ID) and <b>xs</b> (Session String).</li>
+                            </ol>
+                          </div>
+
+                          {cookieError && (
+                            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 font-medium">
+                              {cookieError}
+                            </div>
+                          )}
+                          {cookieSuccess && (
+                            <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700 font-medium">
+                              {cookieSuccess}
+                            </div>
+                          )}
+
+                          <form
+                            onSubmit={async (e) => {
+                              e.preventDefault();
+                              if (!cookieCUser || !cookieXs) {
+                                setCookieError("Both c_user and xs cookies are required.");
+                                return;
+                              }
+                              setCookieSubmitting(true);
+                              setCookieError(null);
+                              setCookieSuccess(null);
+                              try {
+                                const { auth } = await import("@/lib/firebase");
+                                const token = await auth.currentUser?.getIdToken();
+                                const res = await fetch("/api/facebook/cookie", {
+                                  method: "POST",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                    Authorization: `Bearer ${token}`,
+                                  },
+                                  body: JSON.stringify({
+                                    c_user: cookieCUser,
+                                    xs: cookieXs,
+                                    datr: cookieDatr,
+                                  }),
+                                });
+                                const data = await res.json();
+                                if (!res.ok) throw new Error(data.error || "Cookie authentication failed.");
+                                setCookieSuccess(`Success! Created ${data.channelsCount} channels for ${data.accountName}.`);
+                                refreshChannels();
+                                setTimeout(() => {
+                                  setIsAddChannelModalOpen(false);
+                                  setCookieSuccess(null);
+                                }, 2000);
+                              } catch (err: any) {
+                                setCookieError(err.message);
+                              } finally {
+                                setCookieSubmitting(false);
+                              }
+                            }}
+                            className="space-y-3"
+                          >
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-700 mb-1">c_user Cookie *</label>
+                              <input
+                                type="text"
+                                required
+                                value={cookieCUser}
+                                onChange={(e) => setCookieCUser(e.target.value)}
+                                placeholder="e.g. 1000849201948"
+                                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-700 mb-1">xs Cookie *</label>
+                              <input
+                                type="password"
+                                required
+                                value={cookieXs}
+                                onChange={(e) => setCookieXs(e.target.value)}
+                                placeholder="e.g. 38%3A19482%3A2%3A169..."
+                                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-700 mb-1">datr Cookie (Optional)</label>
+                              <input
+                                type="text"
+                                value={cookieDatr}
+                                onChange={(e) => setCookieDatr(e.target.value)}
+                                placeholder="Optional datr value"
+                                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-mono"
+                              />
+                            </div>
+                            <button
+                              type="submit"
+                              disabled={cookieSubmitting}
+                              className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50"
+                            >
+                              {cookieSubmitting ? "Connecting Channels..." : "Connect Account via Cookie"}
+                            </button>
+                          </form>
+                        </div>
+                      )}
+                    </div>
+                  ) : selectedNetworkToAdd.id === "tw" || selectedNetworkToAdd.id === "twitter" || selectedNetworkToAdd.id === "x" ? (
+                    <div className="flex flex-col h-full max-w-lg mx-auto w-full">
+                      {/* Twitter Method Selector Tabs (FS Poster Matching) */}
+                      <div className="flex border-b border-slate-200 mb-6">
+                        <button
+                          onClick={() => setTwitterMethodTab("app")}
+                          className={`flex-1 py-2.5 text-center text-sm font-semibold border-b-2 transition-all ${
+                            twitterMethodTab === "app"
+                              ? "border-blue-600 text-blue-600"
+                              : "border-transparent text-slate-500 hover:text-slate-700"
+                          }`}
+                        >
+                          Option 1: App Method (Personal App)
+                        </button>
+                        <button
+                          onClick={() => setTwitterMethodTab("cookie")}
+                          className={`flex-1 py-2.5 text-center text-sm font-semibold border-b-2 transition-all ${
+                            twitterMethodTab === "cookie"
+                              ? "border-blue-600 text-blue-600"
+                              : "border-transparent text-slate-500 hover:text-slate-700"
+                          }`}
+                        >
+                          Option 2: Cookie Method
+                        </button>
                       </div>
+
+                      {twitterMethodTab === "app" ? (
+                        <div className="flex flex-col justify-between flex-1 space-y-4">
+                          <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 text-xs text-sky-900 space-y-1">
+                            <h4 className="font-bold text-slate-800 text-sm">App Method (Recommended)</h4>
+                            <p className="text-sky-800 leading-relaxed">
+                              Connect your Twitter account using your own Twitter Developer App (API Key & Secret).
+                              Official and 100% reliable without risk of account restriction.
+                            </p>
+                          </div>
+
+                          <div className="p-4 border border-slate-200 rounded-xl bg-slate-50 text-xs space-y-2 text-slate-600">
+                            <div className="flex items-center justify-between font-semibold text-slate-800">
+                              <span>Callback URL for Developer App:</span>
+                              <button
+                                onClick={() => navigator.clipboard.writeText("http://localhost:3000/api/oauth/callback")}
+                                className="text-blue-600 text-xs font-bold hover:underline"
+                              >
+                                Copy
+                              </button>
+                            </div>
+                            <div className="p-2 bg-white border border-slate-200 rounded font-mono text-[11px] text-slate-700 select-all">
+                              http://localhost:3000/api/oauth/callback
+                            </div>
+                          </div>
+
+                          <div className="pt-4">
+                            <a
+                              href="/api/oauth/login?network=twitter"
+                              className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl transition-all shadow-md"
+                            >
+                              <span>Sign in with Twitter App</span>
+                            </a>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col flex-1 space-y-4">
+                          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900">
+                            <h4 className="font-bold mb-0.5">Cookie Method (No Developer App needed)</h4>
+                            <p className="text-amber-800">
+                              Extract your session cookies directly from your browser to connect your Twitter / X account instantly.
+                            </p>
+                          </div>
+
+                          {/* Browser Instructions matching FS Poster Twitter Documentation */}
+                          <div className="border border-slate-200 rounded-xl p-3.5 bg-slate-50 text-xs text-slate-600 space-y-1">
+                            <p className="font-bold text-slate-800">How to get your Twitter cookies:</p>
+                            <ol className="list-decimal pl-4 space-y-1 text-[11px]">
+                              <li>Open <b>x.com</b> (or twitter.com) in Chrome and log in.</li>
+                              <li>Press <b>F12</b> to open DevTools → click <b>Application</b> tab.</li>
+                              <li>Expand <b>Cookies</b> → select <b>https://x.com</b>.</li>
+                              <li>Copy the value of <b>auth_token</b> and <b>ct0</b>.</li>
+                            </ol>
+                          </div>
+
+                          {twitterError && (
+                            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 font-medium">
+                              {twitterError}
+                            </div>
+                          )}
+                          {twitterSuccess && (
+                            <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700 font-medium">
+                              {twitterSuccess}
+                            </div>
+                          )}
+
+                          <form
+                            onSubmit={async (e) => {
+                              e.preventDefault();
+                              if (!twitterAuthToken || !twitterCt0) {
+                                setTwitterError("Both auth_token and ct0 cookies are required.");
+                                return;
+                              }
+                              setTwitterSubmitting(true);
+                              setTwitterError(null);
+                              setTwitterSuccess(null);
+                              try {
+                                const { auth } = await import("@/lib/firebase");
+                                const token = await auth.currentUser?.getIdToken();
+                                const res = await fetch("/api/twitter/cookie", {
+                                  method: "POST",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                    Authorization: `Bearer ${token}`,
+                                  },
+                                  body: JSON.stringify({
+                                    userId: auth.currentUser?.uid || "demo",
+                                    authToken: twitterAuthToken,
+                                    ct0: twitterCt0,
+                                  }),
+                                });
+                                const data = await res.json();
+                                if (!res.ok) throw new Error(data.error || "Twitter cookie connection failed.");
+                                setTwitterSuccess(`Success! Connected ${data.name} via Cookie method.`);
+                                refreshChannels();
+                                setTimeout(() => {
+                                  setIsAddChannelModalOpen(false);
+                                  setTwitterSuccess(null);
+                                }, 2000);
+                              } catch (err: any) {
+                                setTwitterError(err.message);
+                              } finally {
+                                setTwitterSubmitting(false);
+                              }
+                            }}
+                            className="space-y-3"
+                          >
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-700 mb-1">auth_token Cookie *</label>
+                              <input
+                                type="password"
+                                required
+                                value={twitterAuthToken}
+                                onChange={(e) => setTwitterAuthToken(e.target.value)}
+                                placeholder="e.g. 4d7a892b1..."
+                                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-700 mb-1">ct0 Cookie *</label>
+                              <input
+                                type="text"
+                                required
+                                value={twitterCt0}
+                                onChange={(e) => setTwitterCt0(e.target.value)}
+                                placeholder="e.g. e81a4b7f..."
+                                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-mono"
+                              />
+                            </div>
+                            <button
+                              type="submit"
+                              disabled={twitterSubmitting}
+                              className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50"
+                            >
+                              {twitterSubmitting ? "Connecting Twitter..." : "Connect Twitter via Cookie"}
+                            </button>
+                          </form>
+                        </div>
+                      )}
                     </div>
                   ) : (
-                    <div className="flex flex-col h-full max-w-md mx-auto w-full">
-                      <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-100">
-                        <div className="flex items-center gap-3">
-                          <NetAvatar net={selectedNetworkToAdd} size="sm" />
-                          <span className="font-semibold text-slate-800">{selectedNetworkToAdd.name}</span>
-                        </div>
-                        <a href="#" className="text-sm text-blue-500 font-medium hover:underline">See documentation</a>
-                      </div>
-
-                      <div className="mb-6">
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Choose method</label>
-                        <div className="relative">
-                          <select className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm text-slate-700 appearance-none bg-white">
-                            <option>Official method</option>
-                            <option>Custom method</option>
-                          </select>
-                          <ChevronDown className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center mb-6">
-                        <div className="flex-1 border-t border-slate-200"></div>
-                        <span className="px-4 text-xs font-medium text-slate-400">Official method</span>
-                        <div className="flex-1 border-t border-slate-200"></div>
-                      </div>
-
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-5 mb-6">
-                        <h4 className="font-bold text-blue-600 mb-2">No apps</h4>
-                        <p className="text-sm text-slate-700 leading-relaxed">
-                          You do not have any apps added for the official method. Please add a new app from 'Settings &gt; App' or select a different method.
-                        </p>
-                      </div>
-
-                      <label className="flex items-center gap-3 text-sm text-slate-700 font-medium cursor-pointer mb-auto">
-                        <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-[#635BFF] focus:ring-[#635BFF]" />
-                        Enable proxy
-                      </label>
-
-                      <div className="flex items-center justify-between pt-8 mt-8 border-t border-slate-100">
-                        <button onClick={() => setAddChannelMode("easy")} className="flex items-center text-slate-500 font-medium hover:text-slate-800 transition-colors">
-                          <ArrowLeft className="w-4 h-4 mr-2" /> Easy mode
-                        </button>
-                        <button 
-                          onClick={async () => {
-                            if (selectedNetworkToAdd) {
-                              try {
-                                const newChannel: Omit<Channel, "id" | "createdAt"> = {
-                                  name: selectedNetworkToAdd.name,
-                                  network: selectedNetworkToAdd.id,
-                                  isAutoShare: true,
-                                  status: "connected"
-                                };
-                                await addChannel(newChannel);
-                                // Refresh channels via context
-                                refreshData();
-                                setIsAddChannelModalOpen(false);
-                                setSelectedNetworkToAdd(null);
-                                setAddChannelMode("easy");
-                              } catch (err) {
-                                console.error("Error adding channel:", err);
-                              }
-                            }
-                          }}
-                          className="bg-[#635BFF] hover:bg-[#5249e6] text-white rounded-lg px-6 py-2.5 text-sm font-medium transition-colors shadow-sm"
-                        >
-                          Continue
-                        </button>
-                      </div>
+                    <div className="flex flex-col h-full max-w-md mx-auto w-full justify-center items-center text-center space-y-4">
+                      <NetAvatar net={selectedNetworkToAdd} size="lg" />
+                      <h3 className="text-lg font-bold text-slate-800">Connect {selectedNetworkToAdd.name}</h3>
+                      <p className="text-xs text-slate-500 max-w-xs">
+                        Authorize {selectedNetworkToAdd.name} to allow social auto-posting and scheduling.
+                      </p>
+                      <a
+                        href={selectedNetworkToAdd.signInUrl}
+                        className="w-full py-2.5 px-4 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800 transition-all"
+                      >
+                        Sign in with {selectedNetworkToAdd.name}
+                      </a>
                     </div>
                   )}
                 </div>
@@ -1526,10 +3526,26 @@ export default function SocialPosterPage() {
                                     )}
                                   </div>
                                   <div className="min-w-0">
-                                    <p className="font-semibold text-slate-800 text-sm truncate">{channel.name}</p>
-                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                    <div className="flex items-center gap-2">
+                                      <p className="font-semibold text-slate-800 text-sm truncate">{channel.name}</p>
+                                      {channel.channelType && (
+                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                                          channel.channelType.includes("story")
+                                            ? "bg-purple-100 text-purple-700"
+                                            : channel.channelType === "group"
+                                            ? "bg-amber-100 text-amber-700"
+                                            : channel.channelType === "account"
+                                            ? "bg-slate-100 text-slate-700"
+                                            : "bg-blue-100 text-blue-700"
+                                        }`}>
+                                          {channel.channelType}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-0.5">
                                       <span className={`w-1.5 h-1.5 rounded-full ${channel.status === "connected" ? "bg-green-500" : "bg-red-400"}`}></span>
                                       <span className="text-[11px] text-slate-400 capitalize">{channel.status}</span>
+                                      <span className="text-[10px] text-slate-400 font-medium">({channel.method === "app" ? "App" : "Cookie"})</span>
                                     </div>
                                   </div>
                                 </div>

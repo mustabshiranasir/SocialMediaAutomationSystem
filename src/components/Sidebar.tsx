@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, FileText, ChevronDown, Image, ShieldCheck,
   Link2, Users, Settings, LogOut, PenSquare, Tag, FolderOpen,
-  ImagePlus, List, MessageSquare, BarChart2, TrendingUp
+  ImagePlus, List, MessageSquare, BarChart2, TrendingUp, Palette
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { getPendingPosts } from "@/lib/firestore";
@@ -30,9 +30,11 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const { user, role, logout } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
-  const [openMenus, setOpenMenus] = useState<string[]>([]);
+  const [openMenus, setOpenMenus] = useState<string[]>(["Appearance", "Settings"]);
 
   useEffect(() => {
     if (!isEditorOrAbove(role || "")) return;
@@ -76,11 +78,13 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       icon: <MessageSquare className="w-4 h-4" />,
     },
     {
-      label: "Approvals",
-      href: "/approvals",
-      icon: <ShieldCheck className="w-4 h-4" />,
-      requiresEditor: true,
-      badge: pendingCount,
+      label: "Appearance",
+      icon: <Palette className="w-4 h-4" />,
+      children: [
+        { label: "Themes",  href: "/appearance?tab=themes" },
+        { label: "Editors", href: "/appearance?tab=editors" },
+        { label: "Fonts",   href: "/appearance?tab=fonts" },
+      ],
     },
     {
       label: "Accounts",
@@ -105,27 +109,61 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     },
     {
       label: "Settings",
-      href: "/settings",
       icon: <Settings className="w-4 h-4" />,
       adminOnly: true,
+      children: [
+        { label: "General",    href: "/settings?tab=general" },
+        { label: "Connectors", href: "/settings?tab=connectors" },
+        { label: "Writing",    href: "/settings?tab=writing" },
+        { label: "Reading",    href: "/settings?tab=reading" },
+        { label: "Discussion", href: "/settings?tab=discussion" },
+        { label: "Media",      href: "/settings?tab=media" },
+        { label: "Permalinks", href: "/settings?tab=permalinks" },
+        { label: "Privacy",    href: "/settings?tab=privacy" },
+      ],
     },
   ];
 
-  const toggleMenu = (label: string) => {
+  // Auto-open Settings and Appearance accordions when on matching routes
+  useEffect(() => {
+    if (pathname.startsWith("/settings")) {
+      setOpenMenus(prev => prev.includes("Settings") ? prev : [...prev, "Settings"]);
+    }
+    if (pathname.startsWith("/appearance")) {
+      setOpenMenus(prev => prev.includes("Appearance") ? prev : [...prev, "Appearance"]);
+    }
+  }, [pathname]);
+
+  const toggleMenu = (item: NavItem) => {
     setOpenMenus(prev =>
-      prev.includes(label) ? prev.filter(m => m !== label) : [...prev, label]
+      prev.includes(item.label) ? prev.filter(m => m !== item.label) : [...prev, item.label]
     );
+    if (item.children?.[0]?.href) {
+      router.push(item.children[0].href);
+    }
   };
 
   const isActive = (href: string) => {
+    // Handle query-param based routes (e.g. /appearance?tab=themes or /settings?tab=connectors)
+    if (href.includes("?")) {
+      const [hrefPath, hrefQuery] = href.split("?");
+      const hrefParams = new URLSearchParams(hrefQuery);
+      const currentTab = searchParams?.get("tab");
+      const hrefTab = hrefParams.get("tab");
+      const defaultTab = hrefPath === "/appearance" ? "themes" : hrefPath === "/settings" ? "general" : null;
+      const effectiveTab = currentTab || defaultTab;
+      return pathname === hrefPath && effectiveTab === hrefTab;
+    }
     if (href === "/") return pathname === "/";
     if (href === "/team") return pathname === "/team";
     return pathname.startsWith(href);
   };
 
   const isParentActive = (item: NavItem) => {
-    if (!item.children) return false;
-    return item.children.some(child => isActive(child.href));
+    if (item.children) {
+      return item.children.some(child => isActive(child.href));
+    }
+    return false;
   };
 
   return (
@@ -169,7 +207,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             return (
               <div key={item.label}>
                 <button
-                  onClick={() => toggleMenu(item.label)}
+                  onClick={() => toggleMenu(item)}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors group
                     ${parentActive ? "bg-primary/20 text-white" : "text-slate-400 hover:bg-white/5 hover:text-white"}`}
                 >

@@ -3,11 +3,11 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import {
   collection, query, orderBy, limit, startAfter,
-  DocumentSnapshot, onSnapshot, addDoc, deleteDoc,
-  doc, serverTimestamp, QueryDocumentSnapshot,
+  onSnapshot, QueryDocumentSnapshot, where,
 } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db, auth } from "@/lib/firebase";
 import { getChannels, Post, Channel } from "@/lib/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
 const PAGE_SIZE = 20;
 
@@ -18,8 +18,10 @@ interface SocialPosterContextType {
   actionLoading: boolean;
   error: string | null;
   hasMore: boolean;
+  currentUserId: string | null;
   loadMore: () => void;
   refreshData: () => void;
+  refreshChannels: () => void;
   schedulePostOptimistic: (
     newPost: Omit<Post, "id" | "createdAt">,
     apiCall: () => Promise<Post>
@@ -33,21 +35,42 @@ interface SocialPosterContextType {
 const SocialPosterContext = createContext<SocialPosterContextType | undefined>(undefined);
 
 export function SocialPosterProvider({ children }: { children: React.ReactNode }) {
-  const [posts, setPosts]               = useState<Post[]>([]);
-  const [channels, setChannels]         = useState<Channel[]>([]);
-  const [loading, setLoading]           = useState(true);
+  const [posts, setPosts]                 = useState<Post[]>([]);
+  const [channels, setChannels]           = useState<Channel[]>([]);
+  const [loading, setLoading]             = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
-  const [error, setError]               = useState<string | null>(null);
-  const [hasMore, setHasMore]           = useState(true);
+  const [error, setError]                 = useState<string | null>(null);
+  const [hasMore, setHasMore]             = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  // Cursor for pagination
   const lastDocRef = useRef<QueryDocumentSnapshot | null>(null);
-  // Track the real-time unsubscribe function
   const unsubRef   = useRef<(() => void) | null>(null);
 
-  /* ─── Subscribe to first page (real-time) ─── */
+  /* ── Listen to Firebase Auth state to get userId ── */
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setCurrentUserId(user.uid);
+      } else {
+        setCurrentUserId(null);
+      }
+    });
+    return () => unsubAuth();
+  }, []);
+
+  /* ── Fetch Channels scoped to user ── */
+  const fetchUserChannels = () => {
+    getChannels(currentUserId || undefined)
+      .then(setChannels)
+      .catch(err => console.error("Error fetching channels:", err));
+  };
+
+  useEffect(() => {
+    fetchUserChannels();
+  }, [currentUserId]);
+
+  /* ── Subscribe to real-time posts ── */
   const subscribeFirstPage = () => {
-    // Tear down previous listener if any
     if (unsubRef.current) {
       unsubRef.current();
       unsubRef.current = null;
@@ -58,9 +81,11 @@ export function SocialPosterProvider({ children }: { children: React.ReactNode }
     lastDocRef.current = null;
 
     const postsRef = collection(db, "posts");
-    const q = query(postsRef, orderBy("createdAt", "desc"), limit(PAGE_SIZE));
+    let q = currentUserId
+      ? query(postsRef, where("authorId", "==", currentUserId), orderBy("createdAt", "desc"), limit(PAGE_SIZE))
+      : query(postsRef, orderBy("createdAt", "desc"), limit(PAGE_SIZE));
 
-    const unsub = onSnapshot(
+    let unsub = onSnapshot(
       q,
       (snapshot) => {
         const fetched = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Post));
@@ -70,28 +95,47 @@ export function SocialPosterProvider({ children }: { children: React.ReactNode }
         setLoading(false);
       },
       (err) => {
-        console.error("Firestore real-time listener error:", err);
-        setError("Failed to connect to live data. " + err.message);
-        setLoading(false);
+        console.warn("Primary query requires index or failed, falling back to simple query:", err.message);
+        // Fallback for missing index: query by authorId without orderBy and sort in JS
+        const fallbackQ = currentUserId
+          ? query(postsRef, where("authorId", "==", currentUserId), limit(PAGE_SIZE))
+          : query(postsRef, limit(PAGE_SIZE));
+
+        const fallbackUnsub = onSnapshot(
+          fallbackQ,
+          (snapshot) => {
+            const fetched = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Post));
+            fetched.sort((a, b) => {
+              const tA = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : new Date(a.createdAt || 0).getTime();
+              const tB = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : new Date(b.createdAt || 0).getTime();
+              return tB - tA;
+            });
+            setPosts(fetched);
+            setLoading(false);
+          },
+          (fallbackErr) => {
+            console.error("Fallback query error:", fallbackErr);
+            setError("Failed to load posts: " + fallbackErr.message);
+            setLoading(false);
+          }
+        );
+        unsubRef.current = fallbackUnsub;
       }
     );
 
     unsubRef.current = unsub;
   };
 
-  /* ─── Load next page (one-shot fetch, appended) ─── */
   const loadMore = async () => {
     if (!hasMore || !lastDocRef.current || loading) return;
     setLoading(true);
     try {
       const { getDocs } = await import("firebase/firestore");
       const postsRef = collection(db, "posts");
-      const q = query(
-        postsRef,
-        orderBy("createdAt", "desc"),
-        startAfter(lastDocRef.current),
-        limit(PAGE_SIZE)
-      );
+      const q = currentUserId
+        ? query(postsRef, where("authorId", "==", currentUserId), orderBy("createdAt", "desc"), startAfter(lastDocRef.current), limit(PAGE_SIZE))
+        : query(postsRef, orderBy("createdAt", "desc"), startAfter(lastDocRef.current), limit(PAGE_SIZE));
+
       const snapshot = await getDocs(q);
       const more = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Post));
       setPosts(prev => [...prev, ...more]);
@@ -104,27 +148,19 @@ export function SocialPosterProvider({ children }: { children: React.ReactNode }
     }
   };
 
-  /* ─── Fetch channels (not real-time, low-frequency) ─── */
-  useEffect(() => {
-    getChannels().then(setChannels).catch(console.error);
-  }, []);
-
-  /* ─── Bootstrap real-time listener ─── */
   useEffect(() => {
     subscribeFirstPage();
     return () => {
       if (unsubRef.current) unsubRef.current();
     };
-  }, []);
+  }, [currentUserId]);
 
-  /* ─── Optimistic Post Scheduling ─── */
   const schedulePostOptimistic = async (
     newPost: Omit<Post, "id" | "createdAt">,
     apiCall: () => Promise<Post>
   ) => {
     setActionLoading(true);
     setError(null);
-
     const tempId = `temp-${Date.now()}`;
     const tempPost: Post = {
       ...newPost,
@@ -132,38 +168,35 @@ export function SocialPosterProvider({ children }: { children: React.ReactNode }
       createdAt: { toDate: () => new Date(), seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 },
     };
 
-    const previousPosts = [...posts];
+    const previous = [...posts];
     setPosts(prev => [tempPost, ...prev]);
 
     try {
-      const savedPost = await apiCall();
-      // Real-time listener will catch the actual doc; just replace temp entry
-      setPosts(prev => prev.map(p => (p.id === tempId ? savedPost : p)));
+      const saved = await apiCall();
+      setPosts(prev => prev.map(p => (p.id === tempId ? saved : p)));
     } catch (err: any) {
-      setPosts(previousPosts);
-      setError(err.message || "Failed to schedule post. Rolled back changes.");
+      setPosts(previous);
+      setError(err.message || "Failed to schedule post.");
       throw err;
     } finally {
       setActionLoading(false);
     }
   };
 
-  /* ─── Optimistic Post Deletion ─── */
   const deletePostOptimistic = async (
     postId: string,
     apiCall: () => Promise<void>
   ) => {
     setActionLoading(true);
     setError(null);
-
-    const previousPosts = [...posts];
+    const previous = [...posts];
     setPosts(prev => prev.filter(p => p.id !== postId));
 
     try {
       await apiCall();
     } catch (err: any) {
-      setPosts(previousPosts);
-      setError(err.message || "Failed to delete post. Rolled back changes.");
+      setPosts(previous);
+      setError(err.message || "Failed to delete post.");
       throw err;
     } finally {
       setActionLoading(false);
@@ -179,8 +212,10 @@ export function SocialPosterProvider({ children }: { children: React.ReactNode }
         actionLoading,
         error,
         hasMore,
+        currentUserId,
         loadMore,
         refreshData: subscribeFirstPage,
+        refreshChannels: fetchUserChannels,
         schedulePostOptimistic,
         deletePostOptimistic,
       }}

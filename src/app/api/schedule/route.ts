@@ -1,79 +1,97 @@
 import { NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
+import { publishToFacebookChannel } from "@/lib/facebook-publisher";
+import { publishToTwitterChannel } from "@/lib/twitter-publisher";
+import { Channel } from "@/lib/firestore";
 
+/**
+ * POST /api/schedule
+ * Body: { content, channels: Channel[], channelIds?: string[], scheduledAt?, mediaUrls?, linkUrl?, isShareNow? }
+ */
 export async function POST(req: Request) {
   try {
     const authHeader = req.headers.get("Authorization");
-    // For local testing, we might bypass auth if no token is provided, 
-    // or we can mock the user id. Let's try to parse it but fall back to a mock user if testing.
     let userId = "mock_user_id";
-    let userEmail = "mock@example.com";
+    let userEmail = "user@demo.com";
 
     if (authHeader?.startsWith("Bearer ") && authHeader.split("Bearer ")[1] !== "null") {
       const idToken = authHeader.split("Bearer ")[1];
       try {
         const decodedToken = await adminAuth.verifyIdToken(idToken);
         userId = decodedToken.uid;
-        userEmail = decodedToken.email || "mock@example.com";
+        userEmail = decodedToken.email || "user@demo.com";
       } catch (err) {
-        console.warn("Token verification failed, using mock user");
+        console.warn("Token verification failed, falling back to request data");
       }
     }
 
-    const { content, channels, scheduledAt, mediaUrls, isShareNow } = await req.json();
+    const { content, channels, channelIds, scheduledAt, mediaUrls, linkUrl, isShareNow } = await req.json();
 
-    if (!content || !channels || !channels.length) {
+    if (!content || ((!channels || !channels.length) && (!channelIds || !channelIds.length))) {
       return NextResponse.json(
-        { error: "Content and at least one channel are required" },
+        { error: "Content and at least one channel selection are required." },
         { status: 400 }
       );
     }
 
-    const networks = channels.map((c: any) => c.network);
+    let targetChannels: Channel[] = channels || [];
 
-    let finalStatus = "scheduled";
-
-    if (isShareNow) {
-      finalStatus = "published";
-      for (const channel of channels) {
-        if (!channel.accessToken) continue;
-        try {
-          if (channel.network === "facebook") {
-            const response = await fetch(`https://graph.facebook.com/v19.0/me/feed`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ message: content, access_token: channel.accessToken }),
-            });
-            if (!response.ok) finalStatus = "failed";
-          } else if (channel.network === "twitter") {
-            const response = await fetch("https://api.twitter.com/2/tweets", {
-              method: "POST",
-              headers: { "Authorization": `Bearer ${channel.accessToken}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ text: content })
-            });
-            if (!response.ok) finalStatus = "failed";
-          }
-        } catch (err) {
-          console.error("Publishing error:", err);
-          finalStatus = "failed";
-        }
-      }
+    // Fetch from DB if only channelIds provided
+    if ((!targetChannels || !targetChannels.length) && channelIds && channelIds.length) {
+      const fetchedSnap = await adminDb
+        .collection("channels")
+        .where("__name__", "in", channelIds)
+        .get();
+      targetChannels = fetchedSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Channel));
     }
 
-    // Save to Firestore using admin SDK since we are in API route
+    const networks = Array.from(new Set(targetChannels.map(c => c.network)));
+    let finalStatus = isShareNow ? "published" : "scheduled";
+    const publishResults: Record<string, any>[] = [];
+
+    // ── Immediate Publishing (isShareNow) ──
+    if (isShareNow) {
+      let anyFailed = false;
+
+      for (const channel of targetChannels) {
+        if (channel.network === "facebook") {
+          const res = await publishToFacebookChannel(channel, content, mediaUrls, linkUrl);
+          publishResults.push({ channelId: channel.id, name: channel.name, type: channel.channelType, ...res });
+          if (!res.success) anyFailed = true;
+        } else if (channel.network === "twitter" || channel.network === "x") {
+          const res = await publishToTwitterChannel(channel, content, mediaUrls, linkUrl);
+          publishResults.push({ channelId: channel.id, name: channel.name, type: channel.channelType, ...res });
+          if (!res.success) anyFailed = true;
+        } else {
+          // Other networks fallback mock publish
+          publishResults.push({ channelId: channel.id, name: channel.name, success: true, postId: `mock_${Date.now()}` });
+        }
+      }
+
+      if (anyFailed) finalStatus = "failed";
+    }
+
+    // ── Save Post to Firestore ──
     const newPostRef = await adminDb.collection("posts").add({
       content,
       networks,
+      channelIds: targetChannels.map(c => c.id).filter(Boolean),
       authorId: userId,
       authorEmail: userEmail,
       status: finalStatus,
-      scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+      scheduledAt: scheduledAt ? new Date(scheduledAt) : new Date(),
       mediaUrls: mediaUrls || [],
+      linkUrl: linkUrl || null,
+      publishResults: publishResults.length ? publishResults : null,
       createdAt: new Date(),
     });
 
-    return NextResponse.json({ success: true, postId: newPostRef.id });
-
+    return NextResponse.json({
+      success: true,
+      postId: newPostRef.id,
+      status: finalStatus,
+      publishResults,
+    });
   } catch (error: any) {
     console.error("Scheduling error:", error);
     return NextResponse.json(

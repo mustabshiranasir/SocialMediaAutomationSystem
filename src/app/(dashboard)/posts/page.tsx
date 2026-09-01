@@ -52,12 +52,27 @@ export default function AllPosts() {
     setLoading(true);
     try {
       const postsRef = collection(db, "posts");
-      const q =
-        isEditorOrAbove(role || "")
+      let snap;
+      try {
+        const q = isEditorOrAbove(role || "")
           ? query(postsRef, orderBy("createdAt", "desc"))
           : query(postsRef, where("authorId", "==", user!.uid), orderBy("createdAt", "desc"));
-      const snap = await getDocs(q);
-      setPosts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Post)));
+        snap = await getDocs(q);
+      } catch (e) {
+        // Fallback for missing composite index: query without orderBy and sort in JS
+        const fallbackQ = isEditorOrAbove(role || "")
+          ? query(postsRef)
+          : query(postsRef, where("authorId", "==", user!.uid));
+        snap = await getDocs(fallbackQ);
+      }
+
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Post));
+      list.sort((a, b) => {
+        const tA = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : new Date(a.createdAt || 0).getTime();
+        const tB = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : new Date(b.createdAt || 0).getTime();
+        return tB - tA;
+      });
+      setPosts(list);
     } catch (err) {
       console.error(err);
     } finally {

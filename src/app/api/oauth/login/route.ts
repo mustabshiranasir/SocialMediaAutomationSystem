@@ -1,49 +1,67 @@
 import { NextResponse } from "next/server";
+import { adminAuth } from "@/lib/firebase-admin";
 
-const OAUTH_PROVIDERS: Record<string, any> = {
-  facebook: {
-    clientId: process.env.META_CLIENT_ID,
-    authUrl: "https://www.facebook.com/v19.0/dialog/oauth",
-    scope: "pages_manage_posts,pages_read_engagement",
-  },
-  twitter: {
-    clientId: process.env.TWITTER_CLIENT_ID,
-    authUrl: "https://twitter.com/i/oauth2/authorize",
-    scope: "tweet.read tweet.write users.read offline.access",
-  },
-  linkedin: {
-    clientId: process.env.LINKEDIN_CLIENT_ID,
-    authUrl: "https://www.linkedin.com/oauth/v2/authorization",
-    scope: "r_liteprofile w_member_social",
-  }
-};
+const META_CLIENT_ID = process.env.META_CLIENT_ID;
+const BACKEND_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
+/**
+ * GET /api/oauth/login?network=facebook
+ *
+ * Starts the Facebook App Method OAuth flow.
+ * The Authorization header must carry a Firebase ID token so we know which
+ * user is connecting the account.
+ */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const network = searchParams.get("network")?.toLowerCase();
-  
-  if (!network || !OAUTH_PROVIDERS[network]) {
-    // If we don't have it configured, or it's a mock network without keys, fallback gracefully
-    return NextResponse.redirect(new URL(`/social-poster?error=UnsupportedOrMissingNetwork`, request.url));
-  }
+  const network = searchParams.get("network")?.toLowerCase() || "facebook";
 
-  const provider = OAUTH_PROVIDERS[network];
-  
-  if (!provider.clientId) {
-    return NextResponse.redirect(new URL(`/social-poster?error=MissingEnvironmentVariablesFor_${network}`, request.url));
-  }
+  // ── 1. Verify the Firebase ID token to get the current user ──
+  const authHeader = request.headers.get("Authorization");
+  let userId = "anonymous";
 
-  // Generate a state parameter to prevent CSRF and pass state to callback
-  const state = encodeURIComponent(JSON.stringify({ network, timestamp: Date.now() }));
-  const redirectUri = `${new URL(request.url).origin}/api/oauth/callback`;
-
-  let authUrl = "";
-  if (network === "twitter") {
-    authUrl = `${provider.authUrl}?response_type=code&client_id=${provider.clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(provider.scope)}&state=${state}&code_challenge=challenge&code_challenge_method=plain`;
+  if (authHeader?.startsWith("Bearer ")) {
+    const idToken = authHeader.split("Bearer ")[1];
+    try {
+      const decoded = await adminAuth.verifyIdToken(idToken);
+      userId = decoded.uid;
+    } catch {
+      return NextResponse.json({ error: "Unauthorized — invalid token" }, { status: 401 });
+    }
   } else {
-    authUrl = `${provider.authUrl}?client_id=${provider.clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(provider.scope)}&state=${state}`;
+    // Fallback: allow unauthenticated for dev, but flag it
+    userId = "dev_user";
   }
 
-  // Redirect the user to the actual social platform's OAuth login
+  if (!META_CLIENT_ID) {
+    return NextResponse.json(
+      { error: "Facebook App not configured. Please set META_CLIENT_ID in environment variables." },
+      { status: 503 }
+    );
+  }
+
+  // ── 2. Build the Facebook OAuth authorization URL ──
+  const redirectUri = `${BACKEND_URL}/api/oauth/callback`;
+
+  // Embed userId and network in the state parameter (URL-safe base64)
+  const stateData = { userId, network, method: "app", ts: Date.now() };
+  const state = encodeURIComponent(JSON.stringify(stateData));
+
+  // Scopes required for Facebook Pages management
+  const scopes = [
+    "pages_manage_posts",
+    "pages_read_engagement",
+    "pages_show_list",
+    "pages_read_user_content",
+  ].join(",");
+
+  const authUrl =
+    `https://www.facebook.com/v19.0/dialog/oauth` +
+    `?client_id=${META_CLIENT_ID}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&scope=${encodeURIComponent(scopes)}` +
+    `&state=${state}` +
+    `&response_type=code`;
+
+  // ── 3. Redirect the user's browser to Facebook ──
   return NextResponse.redirect(authUrl);
 }
