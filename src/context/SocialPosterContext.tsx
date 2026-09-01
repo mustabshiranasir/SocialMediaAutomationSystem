@@ -6,7 +6,7 @@ import {
   onSnapshot, QueryDocumentSnapshot, where,
 } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
-import { getChannels, Post, Channel } from "@/lib/firestore";
+import { getChannels, type Post, type Channel } from "@/lib/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
 const PAGE_SIZE = 20;

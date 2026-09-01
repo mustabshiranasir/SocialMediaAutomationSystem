@@ -568,18 +568,61 @@ export function subscribeToMediaSettings(
 
 // ─── Appearance Settings ──────────────────────────────────────────────────────
 
+export interface SitePageItem {
+  id: string;
+  title: string;
+  slug: string;
+  status: "Published" | "Draft" | "Scheduled" | "Trash";
+  author: string;
+  updatedAt: string;
+}
+
+export interface SiteNavItem {
+  id: string;
+  label: string;
+  url: string;
+  order: number;
+}
+
 export type AppearanceSettingsData = {
   activeThemeId: string;
   installedThemeIds: string[];
   activeFont: string;
+  siteTitle?: string;
+  siteTagline?: string;
+  siteLogo?: string;
+  siteIcon?: string;
+  primaryColor?: string;
+  backgroundColor?: string;
   customCss?: string;
+  pages?: SitePageItem[];
+  navigation?: SiteNavItem[];
 };
 
 export const defaultAppearanceSettings: AppearanceSettingsData = {
   activeThemeId: "",
   installedThemeIds: [],
   activeFont: "Inter",
+  siteTitle: "Social Media Posting",
+  siteTagline: "Connecting in A Better Way!",
+  siteLogo: "",
+  siteIcon: "",
+  primaryColor: "#000000",
+  backgroundColor: "#ffffff",
   customCss: "/* Custom theme styling */\nbody {\n  font-family: var(--font-sans);\n}",
+  pages: [
+    { id: "page-1", title: "Privacy Policy", slug: "/privacy-policy", status: "Draft", author: "Admin", updatedAt: "2026-09-01" },
+    { id: "page-2", title: "Sample Page", slug: "/sample-page", status: "Published", author: "Admin", updatedAt: "2026-09-01" },
+    { id: "page-3", title: "About Us", slug: "/about-us", status: "Published", author: "Admin", updatedAt: "2026-09-01" },
+    { id: "page-4", title: "Contact", slug: "/contact", status: "Draft", author: "Admin", updatedAt: "2026-09-01" },
+  ],
+  navigation: [
+    { id: "nav-1", label: "Home", url: "/", order: 1 },
+    { id: "nav-2", label: "Blog", url: "/blog", order: 2 },
+    { id: "nav-3", label: "About Us", url: "/about-us", order: 3 },
+    { id: "nav-4", label: "Services", url: "/services", order: 4 },
+    { id: "nav-5", label: "Contact", url: "/contact", order: 5 },
+  ],
 };
 
 export async function getAppearanceSettings(userId: string): Promise<AppearanceSettingsData> {

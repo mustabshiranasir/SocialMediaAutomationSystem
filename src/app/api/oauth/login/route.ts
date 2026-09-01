@@ -1,67 +1,53 @@
 import { NextResponse } from "next/server";
-import { adminAuth } from "@/lib/firebase-admin";
+import { adminDb } from "@/lib/firebase-admin";
 
-const META_CLIENT_ID = process.env.META_CLIENT_ID;
-const BACKEND_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+// GET /api/oauth/login?userId=xxx
+// Reads the user's LinkedIn app credentials from Firestore, then redirects to LinkedIn OAuth
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const userId = searchParams.get("userId");
 
-/**
- * GET /api/oauth/login?network=facebook
- *
- * Starts the Facebook App Method OAuth flow.
- * The Authorization header must carry a Firebase ID token so we know which
- * user is connecting the account.
- */
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const network = searchParams.get("network")?.toLowerCase() || "facebook";
-
-  // ── 1. Verify the Firebase ID token to get the current user ──
-  const authHeader = request.headers.get("Authorization");
-  let userId = "anonymous";
-
-  if (authHeader?.startsWith("Bearer ")) {
-    const idToken = authHeader.split("Bearer ")[1];
-    try {
-      const decoded = await adminAuth.verifyIdToken(idToken);
-      userId = decoded.uid;
-    } catch {
-      return NextResponse.json({ error: "Unauthorized — invalid token" }, { status: 401 });
-    }
-  } else {
-    // Fallback: allow unauthenticated for dev, but flag it
-    userId = "dev_user";
+  if (!userId) {
+    return NextResponse.json({ error: "Missing userId" }, { status: 400 });
   }
 
-  if (!META_CLIENT_ID) {
+  // Load the user's LinkedIn app credentials from Firestore
+  const settingsSnap = await adminDb
+    .collection("users")
+    .doc(userId)
+    .collection("settings")
+    .doc("linkedin_app")
+    .get();
+
+  if (!settingsSnap.exists) {
     return NextResponse.json(
-      { error: "Facebook App not configured. Please set META_CLIENT_ID in environment variables." },
-      { status: 503 }
+      { error: "LinkedIn app credentials not found. Please enter your Client ID and Secret first." },
+      { status: 404 }
     );
   }
 
-  // ── 2. Build the Facebook OAuth authorization URL ──
-  const redirectUri = `${BACKEND_URL}/api/oauth/callback`;
+  const { clientId } = settingsSnap.data() as { clientId: string; clientSecret: string };
 
-  // Embed userId and network in the state parameter (URL-safe base64)
-  const stateData = { userId, network, method: "app", ts: Date.now() };
-  const state = encodeURIComponent(JSON.stringify(stateData));
+  if (!clientId) {
+    return NextResponse.json({ error: "LinkedIn Client ID is missing from saved credentials." }, { status: 400 });
+  }
 
-  // Scopes required for Facebook Pages management
-  const scopes = [
-    "pages_manage_posts",
-    "pages_read_engagement",
-    "pages_show_list",
-    "pages_read_user_content",
-  ].join(",");
+  // The redirect URI must match exactly what's registered in your LinkedIn Developer App
+  const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/oauth/callback`;
 
-  const authUrl =
-    `https://www.facebook.com/v19.0/dialog/oauth` +
-    `?client_id=${META_CLIENT_ID}` +
-    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&scope=${encodeURIComponent(scopes)}` +
-    `&state=${state}` +
-    `&response_type=code`;
+  const scopes = ["r_liteprofile", "w_member_social", "w_organization_social"].join(" ");
 
-  // ── 3. Redirect the user's browser to Facebook ──
+  // Pass userId in state so the callback knows which user to save channels for
+  const state = Buffer.from(JSON.stringify({ userId })).toString("base64");
+
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    state,
+    scope: scopes,
+  });
+
+  const authUrl = `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`;
   return NextResponse.redirect(authUrl);
 }

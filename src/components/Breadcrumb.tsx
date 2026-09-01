@@ -1,7 +1,7 @@
 "use client";
 
-// Breadcrumb Component — Auto-generated from pathname with custom label overrides
-import { usePathname } from "next/navigation";
+import { Suspense } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ChevronRight, Home } from "lucide-react";
 import { motion } from "framer-motion";
@@ -16,11 +16,27 @@ const SEGMENT_LABELS: Record<string, string> = {
   "media":           "Media",
   "add":             "Add New",
   "comments":        "Comments",
-  "approvals":       "Approvals",
+  "appearance":      "Appearance",
   "analytics":       "Analytics",
   "team":            "Team",
   "settings":        "Settings",
   "accounts":        "Accounts",
+};
+
+/** Map of query parameter `?tab=` → display label */
+const TAB_LABELS: Record<string, string> = {
+  general:     "General",
+  connectors:  "Connectors",
+  writing:     "Writing",
+  reading:     "Reading",
+  discussion:  "Discussion",
+  media:       "Media",
+  permalinks:  "Permalinks",
+  privacy:     "Privacy",
+  themes:      "Themes",
+  editors:     "Editors",
+  fonts:       "Fonts",
+  "add-theme": "Add Themes",
 };
 
 interface BreadcrumbItem {
@@ -34,14 +50,17 @@ interface BreadcrumbProps {
   className?: string;
 }
 
-export function Breadcrumb({ items, className = "" }: BreadcrumbProps) {
+function BreadcrumbContent({ items, className = "" }: BreadcrumbProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const tab = searchParams?.get("tab");
 
-  // Auto-generate breadcrumbs from pathname segments
+  // Auto-generate breadcrumbs from pathname segments & query params
   const crumbs: BreadcrumbItem[] = items ?? (() => {
     const segments = pathname.split("/").filter(Boolean);
     const generated: BreadcrumbItem[] = [{ label: "Dashboard", href: "/" }];
     let accumulatedPath = "";
+
     for (const seg of segments) {
       accumulatedPath += `/${seg}`;
       const label =
@@ -49,6 +68,18 @@ export function Breadcrumb({ items, className = "" }: BreadcrumbProps) {
         seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, " ");
       generated.push({ label, href: accumulatedPath });
     }
+
+    // Append active sub-tab (e.g. Settings → Connectors or Appearance → Themes)
+    if (tab && (pathname === "/settings" || pathname === "/appearance")) {
+      const tabLabel =
+        TAB_LABELS[tab] ??
+        tab.charAt(0).toUpperCase() + tab.slice(1).replace(/-/g, " ");
+      generated.push({
+        label: tabLabel,
+        href: `${pathname}?tab=${tab}`,
+      });
+    }
+
     return generated;
   })();
 
@@ -61,18 +92,18 @@ export function Breadcrumb({ items, className = "" }: BreadcrumbProps) {
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className={`flex items-center gap-1 text-xs text-slate-400 mb-6 ${className}`}
+      className={`flex items-center gap-1.5 text-xs text-slate-400 mb-6 font-medium ${className}`}
     >
       {crumbs.map((crumb, index) => {
         const isLast = index === crumbs.length - 1;
         return (
-          <span key={crumb.href} className="flex items-center gap-1">
+          <span key={crumb.href + index} className="flex items-center gap-1.5">
             {index === 0 && (
-              <Home className="w-3 h-3 shrink-0" aria-hidden="true" />
+              <Home className="w-3.5 h-3.5 shrink-0 text-slate-400" aria-hidden="true" />
             )}
             {isLast ? (
               <span
-                className="font-semibold text-slate-600 truncate max-w-[160px]"
+                className="font-bold text-slate-700 truncate max-w-[180px]"
                 aria-current="page"
               >
                 {crumb.label}
@@ -80,17 +111,25 @@ export function Breadcrumb({ items, className = "" }: BreadcrumbProps) {
             ) : (
               <Link
                 href={crumb.href}
-                className="hover:text-blue-500 transition-colors truncate max-w-[120px]"
+                className="hover:text-blue-600 transition-colors truncate max-w-[140px]"
               >
                 {crumb.label}
               </Link>
             )}
             {!isLast && (
-              <ChevronRight className="w-3 h-3 shrink-0 text-slate-300" aria-hidden="true" />
+              <ChevronRight className="w-3.5 h-3.5 shrink-0 text-slate-300" aria-hidden="true" />
             )}
           </span>
         );
       })}
     </motion.nav>
+  );
+}
+
+export function Breadcrumb(props: BreadcrumbProps) {
+  return (
+    <Suspense fallback={null}>
+      <BreadcrumbContent {...props} />
+    </Suspense>
   );
 }

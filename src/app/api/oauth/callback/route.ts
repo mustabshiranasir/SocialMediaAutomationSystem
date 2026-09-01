@@ -1,116 +1,138 @@
 import { NextResponse } from "next/server";
-import { addChannel } from "@/lib/firestore";
+import { adminDb } from "@/lib/firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 
-const META_CLIENT_ID = process.env.META_CLIENT_ID;
-const META_CLIENT_SECRET = process.env.META_CLIENT_SECRET;
-const BACKEND_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-
-/**
- * GET /api/oauth/callback?code=...&state=...
- *
- * Handles Facebook App Method OAuth callback.
- * 1. Exchanges authorization code → user access token
- * 2. Fetches all Pages the user manages (with page-level tokens)
- * 3. Saves each Page as a separate Channel document in Firestore
- * 4. Redirects back to the Channels tab
- */
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const code = searchParams.get("code");
-  const stateStr = searchParams.get("state");
+// GET /api/oauth/callback?code=xxx&state=base64({userId})
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const code  = searchParams.get("code");
+  const state = searchParams.get("state");
   const error = searchParams.get("error");
-  const errorDescription = searchParams.get("error_description");
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
-  // ── Handle user cancellation or error ──
-  if (error || !code) {
-    const errorMsg = errorDescription || error || "AuthenticationFailed";
-    return NextResponse.redirect(
-      `${BACKEND_URL}/social-poster?tab=Channels&error=${encodeURIComponent(errorMsg)}`
-    );
+  if (error || !code || !state) {
+    return NextResponse.redirect(`${appUrl}/accounts?linkedin_error=${error || "missing_code"}`);
   }
 
-  // ── Parse state to get userId and network ──
-  let userId = "anonymous";
-  let network = "facebook";
-
+  // 1. Decode state to get userId
+  let userId: string;
   try {
-    if (stateStr) {
-      const parsed = JSON.parse(decodeURIComponent(stateStr));
-      userId = parsed.userId || "anonymous";
-      network = parsed.network || "facebook";
-    }
+    const decoded = JSON.parse(Buffer.from(state, "base64").toString("utf-8"));
+    userId = decoded.userId;
+    if (!userId) throw new Error("No userId in state");
   } catch {
-    console.error("Failed to parse OAuth state");
+    return NextResponse.redirect(`${appUrl}/accounts?linkedin_error=invalid_state`);
   }
 
-  const redirectUri = `${BACKEND_URL}/api/oauth/callback`;
+  // 2. Load this user's LinkedIn app credentials from Firestore
+  const settingsSnap = await adminDb
+    .collection("users")
+    .doc(userId)
+    .collection("settings")
+    .doc("linkedin_app")
+    .get();
 
-  try {
-    // ── Step 1: Exchange code for user access token ──
-    const tokenUrl = new URL("https://graph.facebook.com/v19.0/oauth/access_token");
-    tokenUrl.searchParams.set("client_id", META_CLIENT_ID || "");
-    tokenUrl.searchParams.set("client_secret", META_CLIENT_SECRET || "");
-    tokenUrl.searchParams.set("redirect_uri", redirectUri);
-    tokenUrl.searchParams.set("code", code);
+  if (!settingsSnap.exists) {
+    return NextResponse.redirect(`${appUrl}/accounts?linkedin_error=no_credentials`);
+  }
 
-    const tokenRes = await fetch(tokenUrl.toString());
-    const tokenData = await tokenRes.json();
+  const { clientId, clientSecret } = settingsSnap.data() as { clientId: string; clientSecret: string };
+  const redirectUri = `${appUrl}/api/oauth/callback`;
 
-    if (!tokenData.access_token) {
-      console.error("Facebook token exchange failed:", tokenData);
-      throw new Error("TokenExchangeFailed");
+  // 3. Exchange auth code for access token using the user's own app credentials
+  const tokenRes = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+    }),
+  });
+
+  if (!tokenRes.ok) {
+    return NextResponse.redirect(`${appUrl}/accounts?linkedin_error=token_exchange_failed`);
+  }
+
+  const tokenData = await tokenRes.json();
+  const accessToken: string = tokenData.access_token;
+  // LinkedIn tokens are valid for 60 days (3rd party) or up to 1 year (member)
+  const tokenExpiry: number = Date.now() + tokenData.expires_in * 1000;
+
+  // 4. Fetch the LinkedIn user profile
+  const meRes = await fetch("https://api.linkedin.com/v2/me?projection=(id,localizedFirstName,localizedLastName,profilePicture(displayImage~:playableStreams))", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!meRes.ok) {
+    return NextResponse.redirect(`${appUrl}/accounts?linkedin_error=profile_fetch_failed`);
+  }
+
+  const meData = await meRes.json();
+  const personUrn = `urn:li:person:${meData.id}`;
+  const displayName = `${meData.localizedFirstName || ""} ${meData.localizedLastName || ""}`.trim() || "LinkedIn Profile";
+
+  // Extract profile picture if available
+  const profilePicUrl: string =
+    meData.profilePicture?.["displayImage~"]?.elements?.slice(-1)?.[0]?.identifiers?.[0]?.identifier || "";
+
+  // 5. Save the personal profile channel to Firestore
+  const channelsRef = adminDb.collection("channels");
+
+  await channelsRef.add({
+    userId,
+    name: displayName,
+    network: "linkedin",
+    channelType: "linkedin_profile",
+    method: "app",
+    accountId: personUrn,
+    accessToken,
+    tokenExpiry,
+    profilePicUrl,
+    isAutoShare: false,
+    status: "connected",
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
+  // 6. Fetch and save LinkedIn Organization Pages the user manages
+  const orgsRes = await fetch(
+    "https://api.linkedin.com/v2/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED&projection=(elements*(organization~(id,localizedName,logoV2(original~:playableStreams))))",
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "X-Restli-Protocol-Version": "2.0.0",
+      },
     }
+  );
 
-    const userAccessToken: string = tokenData.access_token;
+  if (orgsRes.ok) {
+    const orgsData = await orgsRes.json();
+    for (const element of orgsData.elements || []) {
+      const org = element["organization~"];
+      const orgUrn: string = element.organization; // e.g. urn:li:organization:123
+      const orgName: string = org?.localizedName || "LinkedIn Page";
+      const orgPic: string =
+        org?.logoV2?.["original~"]?.elements?.[0]?.identifiers?.[0]?.identifier || "";
 
-    // ── Step 2: Fetch the user's own profile ──
-    const profileRes = await fetch(
-      `https://graph.facebook.com/v19.0/me?fields=id,name,picture.type(large)&access_token=${userAccessToken}`
-    );
-    const profile = await profileRes.json();
-
-    // ── Step 3: Fetch ALL Pages this user manages ──
-    // /me/accounts returns pages with their individual page-level access tokens
-    const pagesRes = await fetch(
-      `https://graph.facebook.com/v19.0/me/accounts?fields=id,name,access_token,picture.type(large),fan_count&access_token=${userAccessToken}`
-    );
-    const pagesData = await pagesRes.json();
-    const pages: any[] = pagesData.data || [];
-
-    let channelCount = 0;
-
-    // ── Step 4: Save each Page as a Channel document ──
-    const savePromises = pages.map(async (page: any) => {
-      // Each page has its own `access_token` — this is the Page Access Token
-      // This is different from the user token and is required to post to a Page feed
-      await addChannel({
+      await channelsRef.add({
         userId,
-        name: page.name,
-        network: "facebook",
-        channelType: "ownpage",
+        name: orgName,
+        network: "linkedin",
+        channelType: "linkedin_page",
         method: "app",
+        accountId: orgUrn,
+        accessToken,
+        tokenExpiry,
+        profilePicUrl: orgPic,
         isAutoShare: false,
         status: "connected",
-        accountId: page.id,
-        pageId: page.id,
-        accessToken: page.access_token,          // Page-level token (not user token!)
-        profilePicUrl: page.picture?.data?.url || null,
-        scopes: ["pages_manage_posts", "pages_read_engagement"],
-        tokenExpiry: Date.now() + 60 * 24 * 60 * 60 * 1000, // 60 days
+        createdAt: FieldValue.serverTimestamp(),
       });
-      channelCount++;
-    });
-
-    await Promise.all(savePromises);
-
-    // ── Step 5: Redirect back to the app with success ──
-    return NextResponse.redirect(
-      `${BACKEND_URL}/social-poster?tab=Channels&success=true&count=${channelCount}&account=${encodeURIComponent(profile.name || "")}`
-    );
-  } catch (err: any) {
-    console.error("OAuth callback error:", err);
-    return NextResponse.redirect(
-      `${BACKEND_URL}/social-poster?tab=Channels&error=${encodeURIComponent(err.message || "UnknownError")}`
-    );
+    }
   }
+
+  // 7. Redirect back to accounts page with success flag
+  return NextResponse.redirect(`${appUrl}/accounts?linkedin_success=true`);
 }

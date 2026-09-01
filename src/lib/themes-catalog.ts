@@ -5,12 +5,33 @@ export interface ThemeItem {
   author: string;
   description: string;
   category: "popular" | "latest" | "block" | "favorites";
+  subject: string;
+  features: string[];
+  layout: string[];
   tags: string[];
   hasUpdate?: boolean;
   updateVersion?: string;
   previewImage: string;
   headlineText?: string;
 }
+
+export const FILTER_SUBJECTS = [
+  "Blog", "E-Commerce", "Education", "Entertainment", "Food & Drink",
+  "Holiday", "News", "Photography", "Portfolio"
+];
+
+export const FILTER_FEATURES = [
+  "Accessibility Ready", "Block Editor Patterns", "Block Editor Styles",
+  "Custom Background", "Custom Colors", "Custom Header", "Custom Logo",
+  "Editor Style", "Featured Image Header", "Featured Images", "Footer Widgets",
+  "Site Editor", "Full Width Template", "Post Formats", "Sticky Post",
+  "Style Variations", "Template Editing", "Theme Options"
+];
+
+export const FILTER_LAYOUTS = [
+  "Grid Layout", "One Column", "Two Columns", "Three Columns",
+  "Four Columns", "Left Sidebar", "Right Sidebar", "Wide Blocks"
+];
 
 const IMAGES = [
   "https://images.unsplash.com/photo-1513694203232-719a280e022f?w=800&auto=format&fit=crop&q=80",
@@ -67,14 +88,29 @@ export const FULL_THEMES_CATALOG: ThemeItem[] = BASE_NAMES.map((name, i) => {
   const image = IMAGES[i % IMAGES.length];
   const author = AUTHORS[i % AUTHORS.length];
 
+  const subject = FILTER_SUBJECTS[i % FILTER_SUBJECTS.length];
+  const features = [
+    FILTER_FEATURES[i % FILTER_FEATURES.length],
+    FILTER_FEATURES[(i + 3) % FILTER_FEATURES.length],
+    FILTER_FEATURES[(i + 7) % FILTER_FEATURES.length],
+    "Custom Colors", "Featured Images"
+  ];
+  const layout = [
+    FILTER_LAYOUTS[i % FILTER_LAYOUTS.length],
+    FILTER_LAYOUTS[(i + 2) % FILTER_LAYOUTS.length]
+  ];
+
   return {
     id,
     name,
     version: `${(i % 5) + 1}.${i % 9}.${i % 3}`,
     author,
     category,
+    subject,
+    features,
+    layout,
     description: `${name} is a high performance, fully customizable WordPress theme designed for high speed publishing, modern layouts, and responsive block editing.`,
-    tags: ["Full Site Editing", "Custom Colors", "Responsive", "Fast Loading", "Block Editor Patterns"],
+    tags: [subject, ...features.slice(0, 3), ...layout.slice(0, 1)],
     hasUpdate: i === 0,
     updateVersion: i === 0 ? "1.6" : undefined,
     previewImage: image,

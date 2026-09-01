@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/context/AuthContext";
 import { Bell, TrendingUp, CheckCircle2, Clock, FileText, Users, BarChart2 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { getPendingPosts, getAllPosts, Post } from "@/lib/firestore";
+import { getPendingPosts, getAllPosts, type Post } from "@/lib/firestore";
 import { isEditorOrAbove } from "@/lib/permissions";
 import Link from "next/link";
 import { Card, CardHeader, StatCard } from "@/components/ui";
