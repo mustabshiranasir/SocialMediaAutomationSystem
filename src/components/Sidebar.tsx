@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, FileText, ChevronDown, Image, ShieldCheck,
   Link2, Users, Settings, LogOut, PenSquare, Tag, FolderOpen,
-  ImagePlus, List, MessageSquare, BarChart2, TrendingUp, Palette
+  ImagePlus, List, MessageSquare, BarChart2, TrendingUp, Palette, Bell
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { getPendingPosts } from "@/lib/firestore";
@@ -34,7 +34,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const router = useRouter();
   const { user, role, logout } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
-  const [openMenus, setOpenMenus] = useState<string[]>(["Appearance", "Settings"]);
+  const [openMenus, setOpenMenus] = useState<string[]>([]);
 
   useEffect(() => {
     if (!isEditorOrAbove(role || "")) return;
@@ -87,12 +87,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       ],
     },
     {
-      label: "Accounts",
-      href: "/accounts",
-      icon: <Link2 className="w-4 h-4" />,
-      adminOnly: true,
-    },
-    {
       label: "Users",
       icon: <Users className="w-4 h-4" />,
       adminOnly: true,
@@ -110,7 +104,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     {
       label: "Settings",
       icon: <Settings className="w-4 h-4" />,
-      adminOnly: true,
       children: [
         { label: "General",    href: "/settings?tab=general" },
         { label: "Connectors", href: "/settings?tab=connectors" },
@@ -120,6 +113,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         { label: "Media",      href: "/settings?tab=media" },
         { label: "Permalinks", href: "/settings?tab=permalinks" },
         { label: "Privacy",    href: "/settings?tab=privacy" },
+        { label: "Notifications", href: "/notifications" },
       ],
     },
   ];

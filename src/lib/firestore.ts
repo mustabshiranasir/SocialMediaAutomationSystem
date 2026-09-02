@@ -740,3 +740,84 @@ export async function deleteContentIdea(id: string) {
   const ideaRef = doc(db, "content_ideas", id);
   await deleteDoc(ideaRef);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// In-App Notifications
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type AppNotification = {
+  id?: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: "info" | "success" | "warning" | "error";
+  read: boolean;
+  link?: string;
+  createdAt?: any;
+};
+
+/** Create a new notification for a user */
+export async function createNotification(notif: Omit<AppNotification, "id" | "read" | "createdAt">) {
+  const colRef = collection(db, "notifications");
+  const docRef = await addDoc(colRef, {
+    ...notif,
+    read: false,
+    createdAt: serverTimestamp(),
+  });
+  return docRef.id;
+}
+
+/** Fetch all notifications for a user, newest first */
+export async function getNotifications(userId: string): Promise<AppNotification[]> {
+  const colRef = collection(db, "notifications");
+  const q = query(colRef, where("userId", "==", userId));
+  const snapshot = await getDocs(q);
+  const notifications = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AppNotification));
+  // Sort newest first on client
+  notifications.sort((a, b) => {
+    const aTime = a.createdAt?.seconds ?? 0;
+    const bTime = b.createdAt?.seconds ?? 0;
+    return bTime - aTime;
+  });
+  return notifications;
+}
+
+/** Mark a single notification as read */
+export async function markNotificationRead(notifId: string) {
+  const notifRef = doc(db, "notifications", notifId);
+  await updateDoc(notifRef, { read: true });
+}
+
+/** Mark all notifications for a user as read */
+export async function markAllNotificationsRead(userId: string) {
+  const colRef = collection(db, "notifications");
+  const q = query(colRef, where("userId", "==", userId), where("read", "==", false));
+  const snapshot = await getDocs(q);
+  const updates = snapshot.docs.map(d => updateDoc(d.ref, { read: true }));
+  await Promise.all(updates);
+}
+
+/** Delete a single notification */
+export async function deleteNotification(notifId: string) {
+  const notifRef = doc(db, "notifications", notifId);
+  await deleteDoc(notifRef);
+}
+
+/** Real-time listener for user notifications */
+export function subscribeToNotifications(
+  userId: string,
+  callback: (notifications: AppNotification[]) => void
+) {
+  const colRef = collection(db, "notifications");
+  const q = query(colRef, where("userId", "==", userId));
+  return onSnapshot(q, snapshot => {
+    const notifications = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AppNotification));
+    notifications.sort((a, b) => {
+      const aTime = a.createdAt?.seconds ?? 0;
+      const bTime = b.createdAt?.seconds ?? 0;
+      return bTime - aTime;
+    });
+    callback(notifications);
+  });
+}
+

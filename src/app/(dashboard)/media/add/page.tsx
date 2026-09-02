@@ -10,20 +10,40 @@ export default function AddMediaFile() {
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(false);
 
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.length) {
+      uploadFile(e.target.files[0]);
+    }
+  };
+
+  const uploadFile = async (file: File) => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("folder", "social_media");
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error("Upload failed");
+      
+      setUploaded(true);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to upload file");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
     const files = Array.from(e.dataTransfer.files);
-    if (files.length) simulateUpload();
-  };
-
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.length) simulateUpload();
-  };
-
-  const simulateUpload = () => {
-    setUploading(true);
-    setTimeout(() => { setUploading(false); setUploaded(true); }, 1500);
+    if (files.length) uploadFile(files[0] as File);
   };
 
   return (

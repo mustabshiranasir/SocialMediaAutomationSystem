@@ -42,9 +42,11 @@ import {
   Eye,
   Sparkles,
 } from "lucide-react";
-import { getAllPosts, getChannels, addChannel, getContentIdeas, addContentIdea, updateContentIdea, deleteContentIdea, Post, Channel } from "@/lib/firestore";
+import { getAllPosts, getChannels, addChannel, getContentIdeas, addContentIdea, updateContentIdea, deleteContentIdea, type Post, type Channel } from "@/lib/firestore";
 import Image from "next/image";
 import { useSocialPoster } from "@/context/SocialPosterContext";
+import MediaUploader from "@/components/MediaUploader";
+import { useOAuthConnect } from "@/lib/useOAuthConnect";
 
 
 import {
@@ -111,6 +113,9 @@ export default function SocialPosterPage() {
     refreshChannels,
     schedulePostOptimistic,
   } = useSocialPoster();
+
+  // OAuth connect/disconnect (server-side flow — credentials never in browser)
+  const { connect: oauthConnect, disconnect: oauthDisconnect, connecting: oauthConnecting, disconnecting: oauthDisconnecting, error: oauthError } = useOAuthConnect();
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
 
   const [isMounted, setIsMounted] = useState(false);
@@ -134,13 +139,18 @@ export default function SocialPosterPage() {
         setActiveTab("Channels");
       }
       if (urlParams.get("error")) {
-        alert("Error connecting channel: " + urlParams.get("error"));
-        // Clean up URL
+        // Show error and clean URL
+        setOauthToast({ type: "error", message: "Error connecting: " + urlParams.get("error") });
         window.history.replaceState({}, document.title, window.location.pathname);
-      } else if (urlParams.get("success")) {
-        alert("Channel connected successfully!");
-        // Clean up URL
-        window.history.replaceState({}, document.title, window.location.pathname);
+      } else if (urlParams.get("connected")) {
+        // OAuth succeeded — switch to Channels tab, refresh channels list, show success toast
+        setActiveTab("Channels");
+        refreshChannels();
+        const platform = urlParams.get("connected") || "account";
+        setOauthToast({ type: "success", message: `${platform.charAt(0).toUpperCase() + platform.slice(1)} account connected successfully!` });
+        window.history.replaceState({}, document.title, window.location.pathname + "?tab=Channels");
+        // Auto-dismiss toast after 4s
+        setTimeout(() => setOauthToast(null), 4000);
       }
     }
 
@@ -161,6 +171,9 @@ export default function SocialPosterPage() {
   const [selectedNetworkToAdd, setSelectedNetworkToAdd] = useState<any>(null);
   const [addChannelMode, setAddChannelMode] = useState<"easy" | "advanced">("easy");
   const [fbMethodTab, setFbMethodTab] = useState<"app" | "cookie">("app");
+
+  // OAuth toast state
+  const [oauthToast, setOauthToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [cookieCUser, setCookieCUser] = useState("");
   const [cookieXs, setCookieXs] = useState("");
   const [cookieDatr, setCookieDatr] = useState("");
@@ -1179,6 +1192,26 @@ export default function SocialPosterPage() {
               exit={{ opacity: 0, y: -10 }}
               className="flex flex-col h-full"
             >
+              {/* OAuth Toast Notification */}
+              <AnimatePresence>
+                {oauthToast && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -12 }}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl mb-4 text-sm font-medium border ${
+                      oauthToast.type === "success"
+                        ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                        : "bg-red-50 border-red-200 text-red-800"
+                    }`}
+                  >
+                    {oauthToast.type === "success" ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+                    {oauthToast.message}
+                    <button onClick={() => setOauthToast(null)} className="ml-auto text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
                   <h2 className="text-2xl font-bold text-slate-800">Channels</h2>
@@ -1323,26 +1356,34 @@ export default function SocialPosterPage() {
                           </td>
                           <td className="p-4 text-center">
                             <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button className="p-1.5 text-slate-400 hover:text-blue-600 rounded bg-white border border-slate-200 hover:border-blue-200 shadow-sm transition-colors">
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
+                              {/* Reconnect */}
                               <button
-                                onClick={async () => {
-                                  try {
-                                    const { deleteDoc, doc } = await import("firebase/firestore");
-                                    const { db } = await import("@/lib/firebase");
-                                    if (channel.id) {
-                                      await deleteDoc(doc(db, "channels", channel.id));
-                                      refreshChannels();
-                                    }
-                                  } catch (err) {
-                                    console.error("Delete channel error:", err);
+                                onClick={() => {
+                                  const net = networkOptionsAddModal.find(n => n.id === channel.network);
+                                  if (net) {
+                                    // For linkedin use the platform name
+                                    const platformMap: Record<string, string> = { li: "linkedin", fb: "facebook", tw: "twitter" };
+                                    oauthConnect(platformMap[channel.network] || channel.network);
                                   }
                                 }}
-                                className="p-1.5 text-slate-400 hover:text-red-600 rounded bg-white border border-slate-200 hover:border-red-200 shadow-sm transition-colors"
-                                title="Delete Channel"
+                                disabled={!!oauthConnecting}
+                                className="p-1.5 text-slate-400 hover:text-blue-600 rounded bg-white border border-slate-200 hover:border-blue-200 shadow-sm transition-colors disabled:opacity-50"
+                                title="Reconnect"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <RefreshCw className={`w-3.5 h-3.5 ${oauthConnecting ? "animate-spin" : ""}`} />
+                              </button>
+                              {/* Disconnect */}
+                              <button
+                                onClick={async () => {
+                                  if (!channel.id) return;
+                                  const ok = await oauthDisconnect(channel.id);
+                                  if (ok) refreshChannels();
+                                }}
+                                disabled={oauthDisconnecting === channel.id}
+                                className="p-1.5 text-slate-400 hover:text-red-600 rounded bg-white border border-slate-200 hover:border-red-200 shadow-sm transition-colors disabled:opacity-50"
+                                title="Disconnect"
+                              >
+                                <Trash2 className={`w-3.5 h-3.5 ${oauthDisconnecting === channel.id ? "animate-spin" : ""}`} />
                               </button>
                             </div>
                           </td>
@@ -3287,21 +3328,59 @@ export default function SocialPosterPage() {
                         </div>
                       )}
                     </div>
-                  ) : (
-                    <div className="flex flex-col h-full max-w-md mx-auto w-full justify-center items-center text-center space-y-4">
-                      <NetAvatar net={selectedNetworkToAdd} size="lg" />
-                      <h3 className="text-lg font-bold text-slate-800">Connect {selectedNetworkToAdd.name}</h3>
-                      <p className="text-xs text-slate-500 max-w-xs">
-                        Authorize {selectedNetworkToAdd.name} to allow social auto-posting and scheduling.
-                      </p>
-                      <a
-                        href={selectedNetworkToAdd.signInUrl}
-                        className="w-full py-2.5 px-4 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800 transition-all"
-                      >
-                        Sign in with {selectedNetworkToAdd.name}
-                      </a>
-                    </div>
-                  )}
+                  ) : (() => {
+                    // Map network id → platform name used by /api/oauth/initiate
+                    const OAUTH_PLATFORMS: Record<string, string> = { li: "linkedin" };
+                    const oauthPlatform = OAUTH_PLATFORMS[selectedNetworkToAdd.id];
+
+                    return (
+                      <div className="flex flex-col h-full max-w-md mx-auto w-full justify-center items-center text-center space-y-4">
+                        <NetAvatar net={selectedNetworkToAdd} size="lg" />
+                        <h3 className="text-lg font-bold text-slate-800">Connect {selectedNetworkToAdd.name}</h3>
+                        <p className="text-xs text-slate-500 max-w-xs">
+                          Authorize {selectedNetworkToAdd.name} to allow social auto-posting and scheduling.
+                        </p>
+
+                        {oauthPlatform ? (
+                          // LinkedIn (and other OAuth platforms): use secure server-side initiate flow
+                          <>
+                            <button
+                              onClick={() => {
+                                setIsAddChannelModalOpen(false);
+                                oauthConnect(oauthPlatform);
+                              }}
+                              disabled={oauthConnecting === oauthPlatform}
+                              className="w-full py-2.5 px-4 bg-[#0077B5] hover:bg-[#006399] text-white rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                            >
+                              {oauthConnecting === oauthPlatform ? (
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <FaLinkedin className="text-base" />
+                              )}
+                              {oauthConnecting === oauthPlatform ? "Redirecting to LinkedIn..." : `Sign in with ${selectedNetworkToAdd.name}`}
+                            </button>
+
+                            <p className="text-[10px] text-slate-400 leading-relaxed">
+                              You will be redirected to {selectedNetworkToAdd.name} to grant permission.<br />
+                              <span className="text-amber-500 font-medium">⚠ LinkedIn tokens expire after 1 year.</span> Reconnect when prompted.
+                            </p>
+
+                            {oauthError && (
+                              <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 w-full">{oauthError}</p>
+                            )}
+                          </>
+                        ) : (
+                          // Other networks: placeholder (not yet implemented)
+                          <a
+                            href={selectedNetworkToAdd.signInUrl}
+                            className="w-full py-2.5 px-4 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800 transition-all"
+                          >
+                            Sign in with {selectedNetworkToAdd.name}
+                          </a>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </motion.div>
@@ -4543,53 +4622,15 @@ function ContentIdeasTabSection({ onScheduleToChannels }: { onScheduleToChannels
                 />
               </div>
 
-              {/* Media Upload Box */}
-              <div>
-                <label className="block text-sm font-semibold text-slate-800 mb-2">Media</label>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  accept="image/*,video/*"
-                  className="hidden"
-                />
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="border border-dashed border-slate-200 rounded-xl p-5 bg-slate-50/50 flex items-center justify-between cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/20 transition-all"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 overflow-hidden">
-                      {mediaPreviewUrl ? (
-                        <img src={mediaPreviewUrl} alt="Preview" className="w-full h-full object-cover" />
-                      ) : (
-                        <LayoutGrid className="w-6 h-6 text-slate-400" />
-                      )}
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-slate-700">
-                        <span className="text-indigo-600 font-semibold hover:underline">
-                          {mediaFile ? mediaFile.name : "Click to upload"}
-                        </span>{" "}
-                        {mediaFile ? "" : "media"}
-                      </div>
-                      <div className="text-xs text-slate-400 mt-0.5">SVG, PNG, JPG, GIF or MP4</div>
-                    </div>
-                  </div>
-                  {mediaFile && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setMediaFile(null);
-                        setMediaPreviewUrl("");
-                      }}
-                      className="text-xs text-red-500 hover:underline"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-              </div>
+              {/* Media Upload — Cloudinary powered */}
+              <MediaUploader
+                onUploadComplete={(media) => setMediaPreviewUrl(media.url)}
+                onRemove={() => setMediaPreviewUrl("")}
+                currentMedia={mediaPreviewUrl}
+                folder="social_media"
+                accept="both"
+                label="Media"
+              />
 
               {/* Add Link */}
               <div>

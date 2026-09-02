@@ -259,10 +259,10 @@ export default function AllUsers() {
       ),
     },
     {
-      key: "email",
+      key: "username",
       header: "Username",
-      render: (email, row) => {
-        const safeEmail = email || "";
+      render: (_, row) => {
+        const safeEmail = row.email || "";
         const initial = row.displayName 
           ? row.displayName[0].toUpperCase() 
           : (safeEmail ? safeEmail[0].toUpperCase() : "?");

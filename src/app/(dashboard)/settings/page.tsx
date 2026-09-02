@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Save, Key, Loader2, CheckCircle2, X, ExternalLink, FlaskConical, Settings as SettingsIcon,
-  Sparkles, Trash2, Cpu, Image as ImageIcon, MessageSquare, Globe, Check, Download
+  Sparkles, Trash2, Cpu, Image as ImageIcon, MessageSquare, Globe, Check, Download, Info, ChevronDown
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -706,6 +706,8 @@ function SettingsContent() {
           </motion.div>
         ) : activeTab === "media" ? (
           <MediaSettingsTab key="media" />
+        ) : activeTab === "privacy" ? (
+          <PrivacySettingsTab key="privacy" />
         ) : (
           <motion.div
             key={activeTab}
@@ -723,6 +725,248 @@ function SettingsContent() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+// ─── Privacy Settings Tab ─────────────────────────────────────────────────────
+function PrivacySettingsTab() {
+  const [activeSubTab, setActiveSubTab] = useState<"settings" | "guide">("settings");
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      className="space-y-6"
+    >
+      {/* Header & Tabs */}
+      <div className="flex flex-col items-center justify-center border-b border-slate-200 pb-2 mb-6">
+        <h1 className="text-2xl font-bold text-slate-900 mb-6">Privacy</h1>
+        
+        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg">
+          <button
+            onClick={() => setActiveSubTab("settings")}
+            className={`px-6 py-2 text-sm font-semibold rounded-md transition-all ${
+              activeSubTab === "settings" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            Settings
+          </button>
+          <button
+            onClick={() => setActiveSubTab("guide")}
+            className={`px-6 py-2 text-sm font-semibold rounded-md transition-all ${
+              activeSubTab === "guide" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            Policy Guide
+          </button>
+        </div>
+      </div>
+      
+      <AnimatePresence mode="wait">
+        {activeSubTab === "settings" ? (
+          <motion.div
+            key="settings"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 md:p-8 max-w-4xl mx-auto"
+          >
+            <h2 className="text-lg font-bold text-slate-800 mb-4">Privacy Settings</h2>
+            
+            <div className="space-y-4 text-sm text-slate-600 leading-relaxed mb-8">
+              <p>
+                As a website owner, you may need to follow national or international privacy laws. For example, you may need to create and display a privacy policy. If you already have a Privacy Policy page, please select it below. If not, please create one.
+              </p>
+              <p>
+                The new page will include help and suggestions for your privacy policy. However, it is your responsibility to use those resources correctly, to provide the information that your privacy policy requires, and to keep that information current and accurate.
+              </p>
+              <p>
+                After your Privacy Policy page is set, you should edit it. You should also review your privacy policy from time to time, especially after installing or updating any themes or plugins. There may be changes or new suggested information for you to consider adding to your policy.
+              </p>
+              <p>
+                <a href="#" className="text-blue-600 font-medium hover:underline">Edit</a> or <a href="#" className="text-blue-600 font-medium hover:underline">preview</a> your Privacy Policy page content. Need help putting together your new Privacy Policy page? <button onClick={() => setActiveSubTab("guide")} className="text-blue-600 font-medium hover:underline cursor-pointer">Check out the privacy policy guide</button> for recommendations on what content to include, along with policies suggested by your plugins and theme.
+              </p>
+            </div>
+
+            <div className="space-y-6">
+              {/* Create New */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 bg-slate-50 rounded-xl border border-slate-100">
+                <div>
+                  <h3 className="font-semibold text-slate-800 text-sm">Create a new Privacy Policy page</h3>
+                  <p className="text-xs text-slate-500 mt-1">Generate a draft with suggested policy text.</p>
+                </div>
+                <button className="px-5 py-2 bg-white border border-slate-300 text-slate-700 font-medium rounded-lg text-sm hover:bg-slate-50 transition-colors shadow-sm whitespace-nowrap">
+                  Create New Page
+                </button>
+              </div>
+
+              {/* Change Existing */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 bg-slate-50 rounded-xl border border-slate-100">
+                <div>
+                  <h3 className="font-semibold text-slate-800 text-sm">Change your Privacy Policy page</h3>
+                  <p className="text-xs text-slate-500 mt-1">Select an existing page to act as your policy.</p>
+                </div>
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <select className="flex-1 sm:w-48 border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white text-slate-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none shadow-sm transition-all">
+                    <option>Privacy Policy</option>
+                    <option>Terms of Service</option>
+                  </select>
+                  <button className="px-5 py-2 bg-blue-600 text-white font-medium rounded-lg text-sm hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap">
+                    Use This Page
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="guide"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="max-w-4xl mx-auto"
+          >
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 md:p-8 mb-6">
+              <h2 className="text-xl font-bold text-slate-800 mb-6">Privacy Policy Guide</h2>
+              <h3 className="text-base font-bold text-slate-800 mb-3">Introduction</h3>
+              
+              <div className="space-y-4 text-sm text-slate-600 leading-relaxed mb-8">
+                <p>This text template will help you to create your website's privacy policy.</p>
+                <p>The template contains a suggestion of sections you most likely will need. Under each section heading, you will find a short summary of what information you should provide, which will help you to get started. Some sections include suggested policy content, others will have to be completed with information from your theme and plugins.</p>
+                <p>Please edit your privacy policy content, making sure to delete the summaries, and adding any information from your theme and plugins. Once you publish your policy page, remember to add it to your navigation menu.</p>
+                <p>It is your responsibility to write a comprehensive privacy policy, to make sure it reflects all national and international legal requirements on privacy, and to keep your policy current and accurate.</p>
+              </div>
+
+              {/* Accordion */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm transition-all bg-white">
+                <button
+                  onClick={() => setIsGuideOpen(!isGuideOpen)}
+                  className="w-full px-5 py-4 flex items-center justify-between bg-slate-50 hover:bg-slate-100 transition-colors"
+                >
+                  <h3 className="font-bold text-slate-800 text-sm">Privacy Policy Guide Details</h3>
+                  <ChevronDown className={`w-5 h-5 text-slate-500 transition-transform duration-300 ${isGuideOpen ? "rotate-180" : ""}`} />
+                </button>
+                
+                <AnimatePresence>
+                  {isGuideOpen && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="border-t border-slate-200"
+                    >
+                      <div className="p-5 md:p-8 space-y-8 text-sm text-slate-600 leading-relaxed">
+                        
+                        <div>
+                          <h4 className="text-base font-bold text-slate-900 mb-2">Who we are</h4>
+                          <p className="mb-2">In this section you should note your site URL, as well as the name of the company, organization, or individual behind it, and some accurate contact information.</p>
+                          <p>The amount of information you may be required to show will vary depending on your local or national business regulations. You may, for example, be required to display a physical address, a registered address, or your company registration number.</p>
+                        </div>
+
+                        <div>
+                          <h4 className="text-base font-bold text-slate-900 mb-2">What personal data we collect and why we collect it</h4>
+                          <p className="mb-2">In this section you should note what personal data you collect from users and site visitors. This may include personal data, such as name, email address, personal account preferences; transactional data, such as purchase information; and technical data, such as information about cookies.</p>
+                          <p className="mb-2">You should also note any collection and retention of sensitive personal data, such as data concerning health.</p>
+                          <p className="mb-2">In addition to listing what personal data you collect, you need to note why you collect it. These explanations must note either the legal basis for your data collection and retention or the active consent the user has given.</p>
+                          <p className="mb-2">Personal data is not just created by a user's interactions with your site. Personal data is also generated from technical processes such as contact forms, comments, cookies, analytics, and third party embeds.</p>
+                          <p>By default WordPress does not collect any personal data about visitors, and only collects the data shown on the User Profile screen from registered users. However some of your plugins may collect personal data. You should add the relevant information below.</p>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-slate-900 mb-2">Comments</h4>
+                          <p>In this subsection you should note what information is captured through comments. We have noted the data which WordPress collects by default.</p>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-slate-900 mb-2">Media</h4>
+                          <p>In this subsection you should note what information may be disclosed by users who can upload media files. All uploaded files are usually publicly accessible.</p>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-slate-900 mb-2">Contact forms</h4>
+                          <p>By default, WordPress does not include a contact form. If you use a contact form plugin, use this subsection to note what personal data is captured when someone submits a contact form, and how long you keep it. For example, you may note that you keep contact form submissions for a certain period for customer service purposes, but you do not use the information submitted through them for marketing purposes.</p>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-slate-900 mb-2">Cookies</h4>
+                          <p>In this subsection you should list the cookies your website uses, including those set by your plugins, social media, and analytics. We have provided the cookies which WordPress installs by default.</p>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-slate-900 mb-2">Analytics</h4>
+                          <p className="mb-2">In this subsection you should note what analytics package you use, how users can opt out of analytics tracking, and a link to your analytics provider's privacy policy, if any.</p>
+                          <p>By default WordPress does not collect any analytics data. However, many web hosting accounts collect some anonymous analytics data. You may also have installed a WordPress plugin that provides analytics services. In that case, add information from that plugin here.</p>
+                        </div>
+
+                        <div>
+                          <h4 className="text-base font-bold text-slate-900 mb-2">Who we share your data with</h4>
+                          <p className="mb-2">In this section you should name and list all third party providers with whom you share site data, including partners, cloud-based services, payment processors, and third party service providers, and note what data you share with them and why. Link to their own privacy policies if possible.</p>
+                          <p>By default WordPress does not share any personal data with anyone.</p>
+                        </div>
+
+                        <div>
+                          <h4 className="text-base font-bold text-slate-900 mb-2">How long we retain your data</h4>
+                          <p>In this section you should explain how long you retain personal data collected or processed by the website. While it is your responsibility to come up with the schedule of how long you keep each dataset for and why you keep it, that information does need to be listed here. For example, you may want to say that you keep contact form entries for six months, analytics records for a year, and customer purchase records for ten years.</p>
+                        </div>
+
+                        <div>
+                          <h4 className="text-base font-bold text-slate-900 mb-2">What rights you have over your data</h4>
+                          <p>In this section you should explain what rights your users have over their data and how they can invoke those rights.</p>
+                        </div>
+
+                        <div>
+                          <h4 className="text-base font-bold text-slate-900 mb-2">Where your data is sent</h4>
+                          <p className="mb-2">In this section you should list all transfers of your site data outside the European Union and describe the means by which that data is safeguarded to European data protection standards. This could include your web hosting, cloud storage, or other third party services.</p>
+                          <p>Where applicable, European data protection law requires personal data of individuals in the European Union or European Economic Area, and other personal data subject to that law, to be protected when transferred outside the European Union or European Economic Area. In addition to listing where the data is transferred, you should explain the legal basis and safeguards relied on for the transfer, such as an adequacy decision, Standard Contractual Clauses, or Binding Corporate Rules. You should also describe any supplementary measures used where relevant.</p>
+                        </div>
+
+                        <div>
+                          <h4 className="text-base font-bold text-slate-900 mb-2">Contact information</h4>
+                          <p>In this section you should provide a contact method for privacy-specific concerns. If you are required to have a Data Protection Officer, list their name and full contact details here as well.</p>
+                        </div>
+
+                        <div>
+                          <h4 className="text-base font-bold text-slate-900 mb-2">Additional information</h4>
+                          <p>If you use your site for commercial purposes and you engage in more complex collection or processing of personal data, you should note the following information in your privacy policy in addition to the information we have already discussed.</p>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-slate-900 mb-2">How we protect your data</h4>
+                          <p>In this section you should explain what measures you have taken to protect your users' data. This could include technical measures such as encryption; security measures such as two factor authentication; and measures such as staff training in data protection. If you have carried out a Privacy Impact Assessment, you can mention it here too.</p>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-slate-900 mb-2">What data breach procedures we have in place</h4>
+                          <p>In this section you should explain what procedures you have in place to deal with data breaches, either potential or real, such as internal reporting systems, contact mechanisms, or bug bounties.</p>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-slate-900 mb-2">What third parties we receive data from</h4>
+                          <p>If your website receives data about users from third parties, including advertisers, this information must be included within the section of your privacy policy dealing with third party data.</p>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-slate-900 mb-2">What automated decision making and/or profiling we do with user data</h4>
+                          <p>If your website provides a service which includes automated decision making - for example, allowing customers to apply for credit, or aggregating their data into an advertising profile - you must note that this is taking place, and include information about how that information is used, what decisions are made with that aggregated data, and what rights users have over decisions made without human intervention.</p>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-slate-900 mb-2">Industry regulatory disclosure requirements</h4>
+                          <p>If you are a member of a regulated industry, or if you are subject to additional privacy laws, you may be required to disclose that information here.</p>
+                        </div>
+
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }
 
