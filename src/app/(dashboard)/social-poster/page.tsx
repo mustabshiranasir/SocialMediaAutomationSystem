@@ -189,6 +189,16 @@ export default function SocialPosterPage() {
   const [twitterError, setTwitterError] = useState<string | null>(null);
   const [twitterSuccess, setTwitterSuccess] = useState<string | null>(null);
 
+  // Pinterest connection states
+  const [pinterestMethodTab, setPinterestMethodTab] = useState<"standard" | "app" | "cookie">("standard");
+  const [pinterestAppName, setPinterestAppName] = useState("");
+  const [pinterestAppId, setPinterestAppId] = useState("");
+  const [pinterestAppSecret, setPinterestAppSecret] = useState("");
+  const [pinterestCookieSess, setPinterestCookieSess] = useState("");
+  const [pinterestSubmitting, setPinterestSubmitting] = useState(false);
+  const [pinterestError, setPinterestError] = useState<string | null>(null);
+  const [pinterestSuccess, setPinterestSuccess] = useState<string | null>(null);
+
   // Settings tab states (Story Customization matching FS Poster)
   const [activeSettingsMenu, setActiveSettingsMenu] = useState<
     "General" | "Apps" | "Auto share" | "AI Settings" | "Watermark & Templates" | "Import & Export" | "System Information" | "Notifications" | "Facebook"
@@ -3323,6 +3333,261 @@ export default function SocialPosterPage() {
                               className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50"
                             >
                               {twitterSubmitting ? "Connecting Twitter..." : "Connect Twitter via Cookie"}
+                            </button>
+                          </form>
+                        </div>
+                      )}
+                    </div>
+                  ) : selectedNetworkToAdd.id === "pi" || selectedNetworkToAdd.id === "pinterest" ? (
+                    <div className="flex flex-col h-full max-w-lg mx-auto w-full">
+                      <div className="flex justify-between items-center mb-6">
+                        <div className="flex items-center gap-2">
+                          <FaPinterest className="text-[#E60023] text-2xl" />
+                          <h2 className="text-xl font-bold text-slate-800">Pinterest</h2>
+                        </div>
+                        <button onClick={() => window.open('/docs/pinterest', '_blank')} className="text-sm font-medium text-blue-600 hover:underline">
+                          See documentation
+                        </button>
+                      </div>
+
+                      {/* Pinterest Method Selector Tabs */}
+                      <div className="flex border-b border-slate-200 mb-6">
+                        <button
+                          onClick={() => setPinterestMethodTab("standard")}
+                          className={`flex-1 py-2.5 text-center text-sm font-semibold border-b-2 transition-all ${
+                            pinterestMethodTab === "standard"
+                              ? "border-[#E60023] text-[#E60023]"
+                              : "border-transparent text-slate-500 hover:text-slate-700"
+                          }`}
+                        >
+                          Option 1: Standard App
+                        </button>
+                        <button
+                          onClick={() => setPinterestMethodTab("app")}
+                          className={`flex-1 py-2.5 text-center text-sm font-semibold border-b-2 transition-all ${
+                            pinterestMethodTab === "app"
+                              ? "border-[#E60023] text-[#E60023]"
+                              : "border-transparent text-slate-500 hover:text-slate-700"
+                          }`}
+                        >
+                          Option 2: Custom App
+                        </button>
+                        <button
+                          onClick={() => setPinterestMethodTab("cookie")}
+                          className={`flex-1 py-2.5 text-center text-sm font-semibold border-b-2 transition-all ${
+                            pinterestMethodTab === "cookie"
+                              ? "border-[#E60023] text-[#E60023]"
+                              : "border-transparent text-slate-500 hover:text-slate-700"
+                          }`}
+                        >
+                          Option 3: Cookie
+                        </button>
+                      </div>
+
+                      {pinterestMethodTab === "standard" ? (
+                        <div className="flex flex-col justify-center items-center flex-1 space-y-4">
+                          <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center max-w-sm w-full">
+                            <FaPinterest className="text-5xl text-[#E60023] mx-auto mb-4" />
+                            <h3 className="text-lg font-bold text-slate-800 mb-2">Sign in with Pinterest</h3>
+                            <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+                              Quickly connect your Pinterest account using our verified standard application.
+                            </p>
+                            <a
+                              href="/api/social/pinterest/login?standard_app=true"
+                              className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-[#E60023] hover:bg-[#d5001c] text-white font-semibold rounded-xl transition-all shadow-md"
+                            >
+                              <FaPinterest className="text-xl" />
+                              <span>Sign in with Pinterest</span>
+                            </a>
+                          </div>
+                        </div>
+                      ) : pinterestMethodTab === "app" ? (
+                        <div className="flex flex-col justify-between flex-1 space-y-4">
+                          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-xs text-red-900 space-y-1">
+                            <h4 className="font-bold text-slate-800 text-sm">App Method (Recommended)</h4>
+                            <p className="text-red-800 leading-relaxed">
+                              Connect your Pinterest account using your own Pinterest Developer App (App ID & Secret).
+                              Official and reliable.
+                            </p>
+                          </div>
+                          
+                          <div className="border border-slate-200 rounded-xl p-3.5 bg-slate-50 text-xs text-slate-600 space-y-1">
+                            <p className="font-bold text-slate-800">Setup Instructions:</p>
+                            <ol className="list-decimal pl-4 space-y-1 text-[11px]">
+                              <li>Go to <b><a href="https://developers.pinterest.com/apps/" target="_blank" className="text-blue-600 underline">Pinterest Developers</a></b> and create an App.</li>
+                              <li>Verify your account and get Standard access.</li>
+                              <li>Add the callback URL below to your Pinterest App settings.</li>
+                              <li>Paste your App ID and Secret below to connect.</li>
+                            </ol>
+                            <div className="mt-2 bg-white border border-slate-200 p-2 rounded flex justify-between items-center">
+                               <span className="font-mono text-[10px] text-slate-500 truncate">{typeof window !== 'undefined' ? window.location.origin : ''}/api/social/pinterest/callback</span>
+                               <button onClick={(e) => { e.preventDefault(); navigator.clipboard.writeText(`${typeof window !== 'undefined' ? window.location.origin : ''}/api/social/pinterest/callback`) }} className="text-blue-600 hover:underline">Copy callback url</button>
+                            </div>
+                          </div>
+
+                          {pinterestError && (
+                            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 font-medium">
+                              {pinterestError}
+                            </div>
+                          )}
+                          {pinterestSuccess && (
+                            <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700 font-medium">
+                              {pinterestSuccess}
+                            </div>
+                          )}
+
+                          <form
+                            onSubmit={async (e) => {
+                              e.preventDefault();
+                              if (!pinterestAppName || !pinterestAppId || !pinterestAppSecret) {
+                                setPinterestError("App Name, App ID, and App Secret are required.");
+                                return;
+                              }
+                              setPinterestSubmitting(true);
+                              setPinterestError(null);
+                              
+                              try {
+                                const { auth } = await import("@/lib/firebase");
+                                const token = await auth.currentUser?.getIdToken();
+                                // Store credentials for OAuth callback validation if we do client-side OAuth kick-off
+                                sessionStorage.setItem("pinterest_app_id", pinterestAppId);
+                                sessionStorage.setItem("pinterest_app_secret", pinterestAppSecret);
+                                
+                                window.location.href = `/api/social/pinterest/login?custom_app=true&app_id=${pinterestAppId}&app_secret=${pinterestAppSecret}`;
+                              } catch (err: any) {
+                                setPinterestError(err.message);
+                                setPinterestSubmitting(false);
+                              }
+                            }}
+                            className="space-y-3"
+                          >
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-700 mb-1">Name *</label>
+                              <input
+                                type="text"
+                                required
+                                value={pinterestAppName}
+                                onChange={(e) => setPinterestAppName(e.target.value)}
+                                placeholder="Pinterest App"
+                                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-[#E60023] font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-700 mb-1">App ID *</label>
+                              <input
+                                type="text"
+                                required
+                                value={pinterestAppId}
+                                onChange={(e) => setPinterestAppId(e.target.value)}
+                                placeholder="34353535535"
+                                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-[#E60023] font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-700 mb-1">App Secret *</label>
+                              <input
+                                type="password"
+                                required
+                                value={pinterestAppSecret}
+                                onChange={(e) => setPinterestAppSecret(e.target.value)}
+                                placeholder="5WE4v2HGtyhc68gF8Lf"
+                                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-[#E60023] font-mono"
+                              />
+                            </div>
+                            <button
+                              type="submit"
+                              disabled={pinterestSubmitting}
+                              className="w-full py-2.5 bg-[#635BFF] hover:bg-[#524BDE] text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50"
+                            >
+                              {pinterestSubmitting ? "Connecting..." : "Add app"}
+                            </button>
+                          </form>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col flex-1 space-y-4 overflow-y-auto">
+                          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900">
+                            <h4 className="font-bold mb-0.5">Cookie Method</h4>
+                            <p className="text-amber-800">
+                              Connect via session cookie extraction. Requires incognito window.
+                            </p>
+                          </div>
+
+                          <div className="border border-slate-200 rounded-xl p-3.5 bg-slate-50 text-xs text-slate-600 space-y-1">
+                            <p className="font-bold text-slate-800">How to get your Pinterest cookies:</p>
+                            <ol className="list-decimal pl-4 space-y-1 text-[11px]">
+                              <li>Open <b>pinterest.com</b> in Incognito and log in.</li>
+                              <li>Press <b>F12</b> → <b>Application</b> tab.</li>
+                              <li>Expand <b>Cookies</b> → select <b>https://www.pinterest.com</b>.</li>
+                              <li>Copy the <b>_pinterest_sess</b> cookie value and paste below.</li>
+                            </ol>
+                          </div>
+
+                          {pinterestError && (
+                            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 font-medium">
+                              {pinterestError}
+                            </div>
+                          )}
+                          {pinterestSuccess && (
+                            <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700 font-medium">
+                              {pinterestSuccess}
+                            </div>
+                          )}
+
+                          <form
+                            onSubmit={async (e) => {
+                              e.preventDefault();
+                              if (!pinterestCookieSess) {
+                                setPinterestError("Cookie _pinterest_sess is required.");
+                                return;
+                              }
+                              setPinterestSubmitting(true);
+                              setPinterestError(null);
+                              try {
+                                const { auth } = await import("@/lib/firebase");
+                                const token = await auth.currentUser?.getIdToken();
+                                const res = await fetch("/api/social/pinterest/cookie", {
+                                  method: "POST",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                    Authorization: `Bearer ${token}`,
+                                  },
+                                  body: JSON.stringify({
+                                    pinterest_sess: pinterestCookieSess,
+                                  }),
+                                });
+                                const data = await res.json();
+                                if (!res.ok) throw new Error(data.error || "Pinterest cookie connection failed.");
+                                setPinterestSuccess(`Success! Connected ${data.name} via Cookie method.`);
+                                refreshChannels();
+                                setTimeout(() => {
+                                  setIsAddChannelModalOpen(false);
+                                  setPinterestSuccess(null);
+                                }, 2000);
+                              } catch (err: any) {
+                                setPinterestError(err.message);
+                              } finally {
+                                setPinterestSubmitting(false);
+                              }
+                            }}
+                            className="space-y-3"
+                          >
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-700 mb-1">Cookie: _pinterest_sess *</label>
+                              <input
+                                type="password"
+                                required
+                                value={pinterestCookieSess}
+                                onChange={(e) => setPinterestCookieSess(e.target.value)}
+                                placeholder="Enter cookie _pinterest_sess"
+                                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-[#E60023] font-mono"
+                              />
+                            </div>
+                            <button
+                              type="submit"
+                              disabled={pinterestSubmitting}
+                              className="w-full py-2.5 bg-[#635BFF] hover:bg-[#524BDE] text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50"
+                            >
+                              {pinterestSubmitting ? "Connecting..." : "Continue"}
                             </button>
                           </form>
                         </div>

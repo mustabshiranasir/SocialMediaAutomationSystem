@@ -126,3 +126,58 @@ class Analytics(Base):
 
     # Relationships
     published_post = relationship("PublishedPost", back_populates="analytics")
+
+
+class PinterestAccount(Base):
+    __tablename__ = "pinterest_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    pinterest_user_id = Column(String, nullable=False)
+    username = Column(String, nullable=True)
+    display_name = Column(String, nullable=True)
+    profile_image = Column(String, nullable=True)
+    access_token = Column(String, nullable=False)
+    refresh_token = Column(String, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    status = Column(String, default="active")
+
+    user = relationship("User")
+    boards = relationship("PinterestBoard", back_populates="account")
+    publications = relationship("PinterestPublication", back_populates="account")
+
+
+class PinterestBoard(Base):
+    __tablename__ = "pinterest_boards"
+
+    id = Column(Integer, primary_key=True, index=True)
+    pinterest_account_id = Column(Integer, ForeignKey("pinterest_accounts.id"))
+    pinterest_board_id = Column(String, nullable=False)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    image_url = Column(String, nullable=True)
+    is_active = Column(Integer, default=1)  # 1 for active, 0 for inactive
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    account = relationship("PinterestAccount", back_populates="boards")
+    publications = relationship("PinterestPublication", back_populates="board")
+
+
+class PinterestPublication(Base):
+    __tablename__ = "pinterest_publications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    pinterest_account_id = Column(Integer, ForeignKey("pinterest_accounts.id"))
+    pinterest_board_id = Column(Integer, ForeignKey("pinterest_boards.id"))
+    post_id = Column(Integer, nullable=True) # ID of the post/draft from our system
+    pinterest_pin_id = Column(String, nullable=True)
+    pin_url = Column(String, nullable=True)
+    status = Column(String, default="pending") # "pending", "success", "failed"
+    error_message = Column(Text, nullable=True)
+    published_at = Column(DateTime, nullable=True)
+
+    account = relationship("PinterestAccount", back_populates="publications")
+    board = relationship("PinterestBoard", back_populates="publications")
