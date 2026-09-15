@@ -3354,9 +3354,9 @@ export default function SocialPosterPage() {
                           <FaPinterest className="text-[#E60023] text-2xl" />
                           <h2 className="text-xl font-bold text-slate-800">Pinterest</h2>
                         </div>
-                        <button onClick={() => window.open('/docs/pinterest', '_blank')} className="text-sm font-medium text-blue-600 hover:underline">
+                        <a href="/docs/pinterest" target="_blank" rel="noreferrer" className="text-sm font-medium text-blue-600 hover:underline">
                           See documentation
-                        </button>
+                        </a>
                       </div>
 
                       {/* Pinterest Method Selector Tabs */}

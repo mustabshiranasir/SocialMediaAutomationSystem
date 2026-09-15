@@ -50,9 +50,14 @@ export async function POST(req: NextRequest) {
     const result = await sendEmail({ to, subject, html });
 
     if (result.success) {
-      return NextResponse.json({ success: true, id: result.data?.id });
+      const emailId = (result.data as any)?.id ?? (result.data as any)?.data?.id ?? null;
+      return NextResponse.json({ success: true, id: emailId });
     } else {
-      return NextResponse.json({ error: result.error?.message || "Failed to send email" }, { status: 500 });
+      const errMsg =
+        (result.error as any)?.message ||
+        (result.error as any)?.name ||
+        "Failed to send email";
+      return NextResponse.json({ error: errMsg }, { status: 500 });
     }
   } catch (error: any) {
     console.error("Email API Route Error:", error);
