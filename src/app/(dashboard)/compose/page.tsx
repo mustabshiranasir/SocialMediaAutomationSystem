@@ -240,6 +240,7 @@ export default function Compose() {
               {[
                 { id: "facebook", label: "Facebook",    letter: "f",  color: "#1877F2" },
                 { id: "twitter",  label: "Twitter (X)", letter: "𝕏", color: "#000000" },
+                { id: "pinterest", label: "Pinterest", letter: "P", color: "#E60023" },
               ].map(net => {
                 const active = networks.includes(net.id);
                 return (

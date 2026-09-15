@@ -3,7 +3,7 @@
 // GET  /api/notifications — List notifications for a user (for server-side use)
 
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/firebase-admin";
+import { adminDb } from "@/lib/firebase-admin";
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid type. Must be info, success, warning, or error" }, { status: 400 });
     }
 
-    const notifRef = db.collection("notifications");
+    const notifRef = adminDb.collection("notifications");
     const doc = await notifRef.add({
       userId,
       title,

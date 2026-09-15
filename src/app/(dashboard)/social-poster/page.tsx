@@ -42,7 +42,7 @@ import {
   Eye,
   Sparkles,
 } from "lucide-react";
-import { getAllPosts, getChannels, addChannel, getContentIdeas, addContentIdea, updateContentIdea, deleteContentIdea, type Post, type Channel } from "@/lib/firestore";
+import { getAllPosts, addChannel, getContentIdeas, addContentIdea, updateContentIdea, deleteContentIdea, type Post, type Channel } from "@/lib/firestore";
 import Image from "next/image";
 import { useSocialPoster } from "@/context/SocialPosterContext";
 import MediaUploader from "@/components/MediaUploader";
@@ -69,13 +69,13 @@ import { ResponsiveContainer, BarChart as ReChartsBarChart, Bar as ReChartsBar, 
 
 // Social network config with real brand icons
 const networkOptionsAddModal = [
-  { id: "fb",  name: "Facebook",          Icon: FaFacebook,        iconColor: "text-white",    bg: "bg-blue-600",    signInUrl: "/api/oauth/login?network=fb" },
-  { id: "tw",  name: "X (Twitter)",       Icon: FaTwitter,         iconColor: "text-white",    bg: "bg-slate-900",   signInUrl: "/api/oauth/login?network=tw" },
+  { id: "facebook",  name: "Facebook",          Icon: FaFacebook,        iconColor: "text-white",    bg: "bg-blue-600",    signInUrl: "/api/oauth/login?network=fb" },
+  { id: "twitter",  name: "X (Twitter)",       Icon: FaTwitter,         iconColor: "text-white",    bg: "bg-slate-900",   signInUrl: "/api/oauth/login?network=tw" },
   { id: "ig",  name: "Instagram",         Icon: FaInstagram,       iconColor: "text-white",    bg: "bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600", signInUrl: "/api/oauth/login?network=ig" },
   { id: "tk",  name: "Tiktok",            Icon: FaTiktok,          iconColor: "text-white",    bg: "bg-black",       signInUrl: "/api/oauth/login?network=tk" },
   { id: "th",  name: "Threads",           Icon: SiThreads,         iconColor: "text-white",    bg: "bg-neutral-900", signInUrl: "/api/oauth/login?network=th" },
-  { id: "li",  name: "Linkedin",          Icon: FaLinkedin,        iconColor: "text-white",    bg: "bg-blue-700",    signInUrl: "/api/oauth/login?network=li" },
-  { id: "pi",  name: "Pinterest",         Icon: FaPinterest,       iconColor: "text-white",    bg: "bg-red-600",     signInUrl: "/api/oauth/login?network=pi" },
+  { id: "linkedin",  name: "Linkedin",          Icon: FaLinkedin,        iconColor: "text-white",    bg: "bg-blue-700",    signInUrl: "/api/oauth/login?network=li" },
+  { id: "pinterest",  name: "Pinterest",         Icon: FaPinterest,       iconColor: "text-white",    bg: "bg-red-600",     signInUrl: "/api/oauth/login?network=pi" },
   { id: "tg",  name: "Telegram",          Icon: FaTelegram,        iconColor: "text-white",    bg: "bg-sky-500",     signInUrl: "/api/oauth/login?network=tg" },
   { id: "re",  name: "Reddit",            Icon: FaReddit,          iconColor: "text-white",    bg: "bg-orange-500",  signInUrl: "/api/oauth/login?network=re" },
   { id: "yc",  name: "YouTube Community", Icon: FaYoutube,         iconColor: "text-white",    bg: "bg-red-600",     signInUrl: "/api/oauth/login?network=yc" },
@@ -421,16 +421,25 @@ export default function SocialPosterPage() {
   const handleSchedule = async (isShareNow: boolean = false) => {
     if (selectedChannelsForPost.length === 0 || !postContent) return;
     
+    const { auth } = await import("@/lib/firebase");
+    const user = auth.currentUser;
+    if (!user) {
+      alert("You must be logged in to schedule a post.");
+      return;
+    }
+    const token = await user.getIdToken();
+
     const apiCall = async () => {
       const response = await fetch("/api/schedule", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": "Bearer mock_token"
+          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
           content: postContent,
           channels: selectedChannelsForPost,
+          channelIds: selectedChannelsForPost.map(c => c.id).filter(Boolean),
           scheduledAt: isShareNow ? new Date().toISOString() : scheduleDate.toISOString(),
           mediaUrls: attachLink && linkUrl ? [linkUrl] : [],
           isShareNow
@@ -456,8 +465,8 @@ export default function SocialPosterPage() {
         {
           content: postContent,
           networks: selectedChannelsForPost.map(c => c.network),
-          authorId: "current-user-id",
-          authorEmail: "me@demo.com",
+          authorId: user.uid,
+          authorEmail: user.email || "user@demo.com",
           status: isShareNow ? "published" : "scheduled",
         },
         apiCall
@@ -3420,8 +3429,8 @@ export default function SocialPosterPage() {
                               <li>Paste your App ID and Secret below to connect.</li>
                             </ol>
                             <div className="mt-2 bg-white border border-slate-200 p-2 rounded flex justify-between items-center">
-                               <span className="font-mono text-[10px] text-slate-500 truncate">{typeof window !== 'undefined' ? window.location.origin : ''}/api/social/pinterest/callback</span>
-                               <button onClick={(e) => { e.preventDefault(); navigator.clipboard.writeText(`${typeof window !== 'undefined' ? window.location.origin : ''}/api/social/pinterest/callback`) }} className="text-blue-600 hover:underline">Copy callback url</button>
+                               <span className="font-mono text-[10px] text-slate-500 truncate">{typeof window !== 'undefined' ? window.location.origin : ''}/api/oauth/callback</span>
+                               <button onClick={(e) => { e.preventDefault(); navigator.clipboard.writeText(`${typeof window !== 'undefined' ? window.location.origin : ''}/api/oauth/callback`) }} className="text-blue-600 hover:underline">Copy callback url</button>
                             </div>
                           </div>
 
@@ -3439,8 +3448,11 @@ export default function SocialPosterPage() {
                           <form
                             onSubmit={async (e) => {
                               e.preventDefault();
-                              if (!pinterestAppName || !pinterestAppId || !pinterestAppSecret) {
-                                setPinterestError("App Name, App ID, and App Secret are required.");
+                              const form = e.currentTarget as HTMLFormElement;
+                              const appRecordId = (form.elements.namedItem("appSelect") as HTMLSelectElement).value;
+                              
+                              if (!appRecordId) {
+                                setPinterestError("Please select a saved app configuration first.");
                                 return;
                               }
                               setPinterestSubmitting(true);
@@ -3449,11 +3461,19 @@ export default function SocialPosterPage() {
                               try {
                                 const { auth } = await import("@/lib/firebase");
                                 const token = await auth.currentUser?.getIdToken();
-                                // Store credentials for OAuth callback validation if we do client-side OAuth kick-off
-                                sessionStorage.setItem("pinterest_app_id", pinterestAppId);
-                                sessionStorage.setItem("pinterest_app_secret", pinterestAppSecret);
                                 
-                                window.location.href = `/api/social/pinterest/login?custom_app=true&app_id=${pinterestAppId}&app_secret=${pinterestAppSecret}`;
+                                const res = await fetch("/api/oauth/initiate", {
+                                  method: "POST",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                    Authorization: `Bearer ${token}`
+                                  },
+                                  body: JSON.stringify({ platform: "pinterest", appRecordId })
+                                });
+                                const data = await res.json();
+                                if (!res.ok) throw new Error(data.error || "Failed to initiate OAuth");
+                                
+                                window.location.href = data.authUrl;
                               } catch (err: any) {
                                 setPinterestError(err.message);
                                 setPinterestSubmitting(false);
@@ -3462,44 +3482,32 @@ export default function SocialPosterPage() {
                             className="space-y-3"
                           >
                             <div>
-                              <label className="block text-xs font-semibold text-slate-700 mb-1">Name *</label>
-                              <input
-                                type="text"
+                              <label className="block text-xs font-semibold text-slate-700 mb-1">Select Pinterest App *</label>
+                              <select
+                                name="appSelect"
                                 required
-                                value={pinterestAppName}
-                                onChange={(e) => setPinterestAppName(e.target.value)}
-                                placeholder="Pinterest App"
-                                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-[#E60023] font-mono"
-                              />
+                                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-[#E60023]"
+                              >
+                                <option value="">-- Choose an App --</option>
+                                {socialApps
+                                  .filter((a: any) => a.platform === "pinterest")
+                                  .map((app: any) => (
+                                    <option key={app.id} value={app.id}>
+                                      {app.name} (ID: {app.appId})
+                                    </option>
+                                  ))}
+                              </select>
+                              {socialApps.filter((a: any) => a.platform === "pinterest").length === 0 && (
+                                <p className="text-[10px] text-red-500 mt-1">No Pinterest apps found. Add one in the Settings tab first.</p>
+                              )}
                             </div>
-                            <div>
-                              <label className="block text-xs font-semibold text-slate-700 mb-1">App ID *</label>
-                              <input
-                                type="text"
-                                required
-                                value={pinterestAppId}
-                                onChange={(e) => setPinterestAppId(e.target.value)}
-                                placeholder="34353535535"
-                                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-[#E60023] font-mono"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-semibold text-slate-700 mb-1">App Secret *</label>
-                              <input
-                                type="password"
-                                required
-                                value={pinterestAppSecret}
-                                onChange={(e) => setPinterestAppSecret(e.target.value)}
-                                placeholder="5WE4v2HGtyhc68gF8Lf"
-                                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-[#E60023] font-mono"
-                              />
-                            </div>
+                            
                             <button
                               type="submit"
-                              disabled={pinterestSubmitting}
-                              className="w-full py-2.5 bg-[#635BFF] hover:bg-[#524BDE] text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50"
+                              disabled={pinterestSubmitting || socialApps.filter((a: any) => a.platform === "pinterest").length === 0}
+                              className="w-full py-2.5 bg-[#E60023] hover:bg-[#d5001c] text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50 flex items-center justify-center gap-2"
                             >
-                              {pinterestSubmitting ? "Connecting..." : "Add app"}
+                              {pinterestSubmitting ? "Connecting..." : "Connect with App"}
                             </button>
                           </form>
                         </div>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { publishToFacebookChannel } from "@/lib/facebook-publisher";
 import { publishToTwitterChannel } from "@/lib/twitter-publisher";
+import { publishToPinterestChannel } from "@/lib/pinterest-publisher";
 import { Channel } from "@/lib/firestore";
 
 const CRON_SECRET = process.env.CRON_SECRET;
@@ -83,6 +84,10 @@ export async function GET(req: Request) {
           }
         } else if (channel.network === "twitter" || channel.network === "x") {
           const result = await publishToTwitterChannel(channel, content, mediaUrls, linkUrl);
+          executionLogs.push({ channelId: channel.id, name: channel.name, type: channel.channelType, ...result });
+          if (!result.success) allSuccess = false;
+        } else if (channel.network === "pinterest") {
+          const result = await publishToPinterestChannel(channel, content, mediaUrls, linkUrl);
           executionLogs.push({ channelId: channel.id, name: channel.name, type: channel.channelType, ...result });
           if (!result.success) allSuccess = false;
         } else {

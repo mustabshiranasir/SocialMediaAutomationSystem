@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
 import { publishToFacebookChannel } from "@/lib/facebook-publisher";
 import { publishToTwitterChannel } from "@/lib/twitter-publisher";
+import { publishToPinterestChannel } from "@/lib/pinterest-publisher";
 import { Channel } from "@/lib/firestore";
 
 /**
@@ -11,38 +12,53 @@ import { Channel } from "@/lib/firestore";
 export async function POST(req: Request) {
   try {
     const authHeader = req.headers.get("Authorization");
-    let userId = "mock_user_id";
-    let userEmail = "user@demo.com";
+    if (!authHeader?.startsWith("Bearer ") || authHeader.split("Bearer ")[1] === "null") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    if (authHeader?.startsWith("Bearer ") && authHeader.split("Bearer ")[1] !== "null") {
-      const idToken = authHeader.split("Bearer ")[1];
-      try {
-        const decodedToken = await adminAuth.verifyIdToken(idToken);
-        userId = decodedToken.uid;
-        userEmail = decodedToken.email || "user@demo.com";
-      } catch (err) {
-        console.warn("Token verification failed, falling back to request data");
-      }
+    let userId: string;
+    let userEmail: string;
+
+    const idToken = authHeader.split("Bearer ")[1].trim();
+    try {
+      const decodedToken = await adminAuth.verifyIdToken(idToken);
+      userId = decodedToken.uid;
+      userEmail = decodedToken.email || "user@demo.com";
+    } catch (err) {
+      return NextResponse.json({ error: "Unauthorized: invalid token" }, { status: 401 });
     }
 
     const { content, channels, channelIds, scheduledAt, mediaUrls, linkUrl, isShareNow } = await req.json();
 
-    if (!content || ((!channels || !channels.length) && (!channelIds || !channelIds.length))) {
+    let idsToFetch: string[] = [];
+    if (channelIds && channelIds.length) {
+      idsToFetch = channelIds;
+    } else if (channels && channels.length) {
+      idsToFetch = channels.map((c: any) => c.id).filter(Boolean);
+    }
+
+    if (!content || !idsToFetch.length) {
       return NextResponse.json(
         { error: "Content and at least one channel selection are required." },
         { status: 400 }
       );
     }
 
-    let targetChannels: Channel[] = channels || [];
+    const fetchedSnap = await adminDb
+      .collection("channels")
+      .where("__name__", "in", idsToFetch)
+      .get();
+      
+    if (fetchedSnap.docs.length !== idsToFetch.length) {
+      return NextResponse.json({ error: "Forbidden: one or more channels do not exist or do not belong to you" }, { status: 403 });
+    }
 
-    // Fetch from DB if only channelIds provided
-    if ((!targetChannels || !targetChannels.length) && channelIds && channelIds.length) {
-      const fetchedSnap = await adminDb
-        .collection("channels")
-        .where("__name__", "in", channelIds)
-        .get();
-      targetChannels = fetchedSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Channel));
+    const targetChannels = fetchedSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Channel));
+
+    for (const channel of targetChannels) {
+      if (channel.userId !== userId) {
+        return NextResponse.json({ error: "Forbidden: one or more channels do not exist or do not belong to you" }, { status: 403 });
+      }
     }
 
     const networks = Array.from(new Set(targetChannels.map(c => c.network)));
@@ -60,6 +76,10 @@ export async function POST(req: Request) {
           if (!res.success) anyFailed = true;
         } else if (channel.network === "twitter" || channel.network === "x") {
           const res = await publishToTwitterChannel(channel, content, mediaUrls, linkUrl);
+          publishResults.push({ channelId: channel.id, name: channel.name, type: channel.channelType, ...res });
+          if (!res.success) anyFailed = true;
+        } else if (channel.network === "pinterest") {
+          const res = await publishToPinterestChannel(channel, content, mediaUrls, linkUrl);
           publishResults.push({ channelId: channel.id, name: channel.name, type: channel.channelType, ...res });
           if (!res.success) anyFailed = true;
         } else {

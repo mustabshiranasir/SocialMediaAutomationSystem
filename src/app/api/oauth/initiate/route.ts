@@ -1,46 +1,45 @@
-/**
- * POST /api/oauth/initiate
- * Called by the frontend (with Firebase ID token in Authorization header).
- * Validates the user, generates a secure state, stores it in Firestore,
- * then returns the platform OAuth authorization URL.
- *
- * Supports: linkedin (extensible to facebook, instagram, twitter, etc.)
- */
-
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
 import crypto from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 
-// ── Supported platforms ──────────────────────────────────────────────────────
-
 const PLATFORM_CONFIGS: Record<string, {
   buildAuthUrl: (clientId: string, redirectUri: string, state: string) => string;
-  clientIdEnv: string;
-  redirectUriEnv: string;
+  clientIdEnv?: string;
+  redirectUriEnv?: string;
+  isCustomApp?: boolean;
 }> = {
   linkedin: {
     clientIdEnv: "LINKEDIN_CLIENT_ID",
     redirectUriEnv: "LINKEDIN_REDIRECT_URI",
     buildAuthUrl: (clientId, redirectUri, state) => {
       const scopes = ["openid", "profile", "email", "w_member_social"].join(" ");
-      return `https://www.linkedin.com/oauth/v2/authorization?${new URLSearchParams({
+      return "https://www.linkedin.com/oauth/v2/authorization?" + new URLSearchParams({
         response_type: "code",
         client_id: clientId,
         redirect_uri: redirectUri,
         state,
         scope: scopes,
-      })}`;
+      }).toString();
     },
   },
-  // Add more platforms here later, e.g. facebook, instagram, twitter
+  pinterest: {
+    isCustomApp: true,
+    buildAuthUrl: (clientId, redirectUri, state) => {
+      const scopes = ["boards:read", "boards:write", "pins:read", "pins:write"].join(",");
+      return "https://www.pinterest.com/oauth/?" + new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        response_type: "code",
+        scope: scopes,
+        state,
+      }).toString();
+    },
+  }
 };
-
-// ── Handler ──────────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
   try {
-    // 1. Verify Firebase auth token from Authorization header
     const authHeader = req.headers.get("authorization") || "";
     const idToken = authHeader.replace("Bearer ", "").trim();
     if (!idToken) {
@@ -55,35 +54,43 @@ export async function POST(req: Request) {
     }
 
     const userId = decodedToken.uid;
-
-    // 2. Determine platform from request body
     const body = await req.json().catch(() => ({}));
     const platform = (body.platform || "linkedin").toLowerCase();
+    const appRecordId = body.appRecordId;
 
     const config = PLATFORM_CONFIGS[platform];
     if (!config) {
-      return NextResponse.json({ error: `Unsupported platform: ${platform}` }, { status: 400 });
+      return NextResponse.json({ error: "Unsupported platform: " + platform }, { status: 400 });
     }
 
-    const clientId = process.env[config.clientIdEnv];
-    const redirectUri = process.env[config.redirectUriEnv];
+    let clientId: string;
+    let redirectUri: string;
 
-    if (!clientId || !redirectUri) {
-      return NextResponse.json({ error: `${platform} OAuth credentials not configured on server` }, { status: 500 });
+    if (config.isCustomApp) {
+      if (!appRecordId) return NextResponse.json({ error: "Missing appRecordId" }, { status: 400 });
+      const appDoc = await adminDb.collection("social_apps").doc(appRecordId).get();
+      if (!appDoc.exists || appDoc.data()?.userId !== userId || appDoc.data()?.platform !== platform) {
+        return NextResponse.json({ error: "Forbidden: invalid app record" }, { status: 403 });
+      }
+      clientId = appDoc.data()!.appId;
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      redirectUri = appUrl + "/api/oauth/callback";
+    } else {
+      clientId = process.env[config.clientIdEnv!] || "";
+      redirectUri = process.env[config.redirectUriEnv!] || "";
+      if (!clientId || !redirectUri) return NextResponse.json({ error: "Missing config" }, { status: 500 });
     }
 
-    // 3. Generate a cryptographically secure state token
     const state = crypto.randomBytes(32).toString("hex");
 
-    // 4. Store state in Firestore with expiry (10 min) — server-side only, never exposed to client
     await adminDb.collection("oauth_states").doc(state).set({
       userId,
       platform,
+      appRecordId: config.isCustomApp ? appRecordId : null,
       createdAt: FieldValue.serverTimestamp(),
-      expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes from now
+      expiresAt: Date.now() + 10 * 60 * 1000,
     });
 
-    // 5. Build and return the authorization URL
     const authUrl = config.buildAuthUrl(clientId, redirectUri, state);
     return NextResponse.json({ authUrl });
 

@@ -293,83 +293,17 @@ export async function addChannel(channel: Omit<Channel, "id" | "createdAt">) {
  * If userId is omitted, returns ALL channels (admin use only).
  */
 export async function getChannels(userId?: string): Promise<Channel[]> {
-  const channelsRef = collection(db, "channels");
-  let snap;
-  if (userId) {
-    const q = query(channelsRef, where("userId", "==", userId));
-    snap = await getDocs(q);
-  } else {
-    snap = await getDocs(channelsRef);
-  }
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Channel));
+  const { auth } = await import("./firebase");
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) return [];
+  const res = await fetch("/api/channels", {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error("Failed to fetch channels");
+  const data = await res.json();
+  return data.channels;
 }
 
-/**
- * Fetches channels for a user filtered by network.
- */
-export async function getChannelsByNetwork(userId: string, network: string): Promise<Channel[]> {
-  const channelsRef = collection(db, "channels");
-  const q = query(
-    channelsRef,
-    where("userId", "==", userId),
-    where("network", "==", network)
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Channel));
-}
-
-/**
- * Fetches channels by their IDs.
- */
-export async function getChannelsByIds(channelIds: string[]): Promise<Channel[]> {
-  if (!channelIds.length) return [];
-  const results: Channel[] = [];
-  for (const id of channelIds) {
-    const ref = doc(db, "channels", id);
-    const snap = await getDoc(ref);
-    if (snap.exists()) {
-      results.push({ id: snap.id, ...snap.data() } as Channel);
-    }
-  }
-  return results;
-}
-
-/**
- * Updates a channel document.
- */
-export async function updateChannel(channelId: string, updates: Partial<Channel>) {
-  const channelRef = doc(db, "channels", channelId);
-  await updateDoc(channelRef, { ...updates, updatedAt: serverTimestamp() });
-}
-
-/**
- * Deletes a channel document.
- */
-export async function deleteChannel(channelId: string) {
-  const channelRef = doc(db, "channels", channelId);
-  await deleteDoc(channelRef);
-}
-
-/**
- * Subscribes to real-time channel updates for a specific user (or all channels if admin/no userId).
- */
-export function subscribeToChannels(
-  userId: string | undefined,
-  callback: (channels: Channel[]) => void
-): () => void {
-  const channelsRef = collection(db, "channels");
-  const q = userId ? query(channelsRef, where("userId", "==", userId)) : query(channelsRef);
-  return onSnapshot(
-    q,
-    (snap) => {
-      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Channel));
-      callback(list);
-    },
-    (err) => {
-      console.error("subscribeToChannels error:", err);
-    }
-  );
-}
 
 // ─── Facebook Settings ────────────────────────────────────────────────────────
 
@@ -666,29 +600,43 @@ export type SocialApp = {
 };
 
 export async function getSocialApps(userId?: string): Promise<SocialApp[]> {
-  const appsRef = collection(db, "social_apps");
-  let snap;
-  if (userId) {
-    const q = query(appsRef, where("userId", "==", userId));
-    snap = await getDocs(q);
-  } else {
-    snap = await getDocs(appsRef);
-  }
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as SocialApp));
+  const { auth } = await import("./firebase");
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) return [];
+  const res = await fetch("/api/social-apps", {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error("Failed to fetch social apps");
+  const data = await res.json();
+  return data.apps;
 }
 
 export async function addSocialApp(app: Omit<SocialApp, "id" | "createdAt">) {
-  const appsRef = collection(db, "social_apps");
-  const docRef = await addDoc(appsRef, {
-    ...app,
-    createdAt: serverTimestamp(),
+  const { auth } = await import("./firebase");
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) throw new Error("Unauthorized");
+  const res = await fetch("/api/social-apps", {
+    method: "POST",
+    headers: { 
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}` 
+    },
+    body: JSON.stringify(app),
   });
-  return docRef.id;
+  if (!res.ok) throw new Error("Failed to add social app");
+  const data = await res.json();
+  return data.id;
 }
 
 export async function deleteSocialApp(appId: string) {
-  const appRef = doc(db, "social_apps", appId);
-  await deleteDoc(appRef);
+  const { auth } = await import("./firebase");
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) throw new Error("Unauthorized");
+  const res = await fetch(`/api/social-apps?appId=${appId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error("Failed to delete social app");
 }
 
 // ─── Content Ideas ─────────────────────────────────────────────────────────────
